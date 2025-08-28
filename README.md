@@ -1,0 +1,2 @@
+# partner-web
+frontend
