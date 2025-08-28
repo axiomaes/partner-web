@@ -6,6 +6,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+COPY . .
+# Verifica que index.html exista antes de construir
+RUN ls -la && test -f index.html
+
 # Copia solo lo necesario para el build (mejor caché)
 COPY tsconfig*.json vite.config.ts tailwind.config.js ./
 COPY public ./public
