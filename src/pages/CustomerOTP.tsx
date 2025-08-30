@@ -1,4 +1,3 @@
-// web/src/pages/CustomerOTP.tsx
 import { FormEvent, useState } from "react";
 import { api } from "../shared/api";
 
@@ -12,7 +11,7 @@ export default function CustomerOTP() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post("/auth/customer/request", { phone });
+      await api.post("/auth/customer/request", { phone: phone.trim() });
       setStep("verify");
     } catch (err: any) {
       alert(err?.response?.data?.message ?? err.message);
@@ -25,11 +24,10 @@ export default function CustomerOTP() {
     e.preventDefault();
     setLoading(true);
     try {
-      // quitamos la desestructuración para evitar TS6133 (variable no usada)
-      await api.post("/auth/customer/verify", { phone, code });
+      await api.post("/auth/customer/verify", { phone: phone.trim(), code });
       alert("Código verificado. ¡Bienvenido!");
-      // TODO: redirigir si aplica
-      // navigate("/portal");
+      // Aquí podríamos guardar token de cliente si el backend lo devuelve
+      // y redirigir a un portal/área de cliente.
     } catch (err: any) {
       alert(err?.response?.data?.message ?? err.message);
     } finally {
@@ -38,43 +36,67 @@ export default function CustomerOTP() {
   }
 
   return (
-    <div className="max-w-sm">
-      {step === "request" && (
-        <form onSubmit={requestCode} className="space-y-3">
-          <h1 className="text-xl font-semibold">Acceso Cliente</h1>
-          <input
-            className="border px-3 py-2 w-full"
-            placeholder="Teléfono (E.164, ej. +51...)"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-          <button disabled={loading} className="bg-black text-white px-4 py-2 rounded">
-            {loading ? "Enviando..." : "Enviar código"}
-          </button>
-        </form>
-      )}
+    <div className="container-app">
+      <div className="card max-w-sm mx-auto">
+        <div className="card-body">
+          <h1 className="text-xl font-semibold">Acceso Clientes</h1>
+          <p className="text-slate-600 text-sm">
+            Te enviaremos un código a tu WhatsApp. No necesitas contraseña.
+          </p>
 
-      {step === "verify" && (
-        <form onSubmit={verifyCode} className="space-y-3">
-          <h1 className="text-xl font-semibold">Verificar código</h1>
-          <input
-            className="border px-3 py-2 w-full"
-            placeholder="Código recibido"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-          <button disabled={loading} className="bg-black text-white px-4 py-2 rounded">
-            {loading ? "Verificando..." : "Entrar"}
-          </button>
-          <button
-            type="button"
-            className="text-sm underline"
-            onClick={() => setStep("request")}
-          >
-            Cambiar número
-          </button>
-        </form>
-      )}
+          {step === "request" && (
+            <form onSubmit={requestCode} className="mt-4 space-y-3">
+              <label className="block">
+                <span className="text-sm font-medium">Teléfono (formato E.164)</span>
+                <input
+                  className="input mt-1"
+                  inputMode="tel"
+                  placeholder="+34XXXXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
+              </label>
+
+              <button className="button button-primary w-full" disabled={loading}>
+                {loading ? "Enviando…" : "Enviar código"}
+              </button>
+            </form>
+          )}
+
+          {step === "verify" && (
+            <form onSubmit={verifyCode} className="mt-4 space-y-3">
+              <div className="text-xs text-slate-500">
+                Enviamos un código a <span className="font-medium">{phone}</span>.
+              </div>
+
+              <label className="block">
+                <span className="text-sm font-medium">Código recibido</span>
+                <input
+                  className="input mt-1"
+                  inputMode="numeric"
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                />
+              </label>
+
+              <button className="button button-primary w-full" disabled={loading}>
+                {loading ? "Verificando…" : "Entrar"}
+              </button>
+
+              <button
+                type="button"
+                className="button button-ghost w-full"
+                onClick={() => setStep("request")}
+              >
+                Cambiar número
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
