@@ -1,78 +1,95 @@
-import { useState } from "react";
-import { api } from "../shared/api";
-import { saveAuth } from "../shared/auth";
+import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../shared/api";
 
 export default function LoginStaff() {
-  const [email, setEmail] = useState("");
+  const nav = useNavigate();
+  const [email, setEmail] = useState("admin@axioma-creativa.es");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const navigate = useNavigate();
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setErr(null);
     setLoading(true);
+    setErr(null);
     try {
       const res = await api.post("/auth/login", { email, password });
-
-      // Esperamos { token, user }, pero soportamos { access_token } también.
-      const data = res.data || {};
-      const token: string = data.token || data.access_token;
-      const user = data.user || { id: "me", email, role: (data.role || "BARBER") as any };
-
-      if (!token) throw new Error("Respuesta sin token");
-
-      saveAuth(token, user);
-      navigate("/dashboard", { replace: true });
+      const { token, user } = res.data || {};
+      if (token) {
+        // Persistimos en localStorage para que el interceptor lo use
+        localStorage.setItem("auth", JSON.stringify({ token, user }));
+      }
+      nav("/dashboard");
     } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "Error de autenticación");
+      const msg =
+        e?.response?.status === 401
+          ? "Credenciales inválidas."
+          : e?.response?.data?.message || e?.message || "Error al iniciar sesión.";
+      setErr(msg);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-[70vh] grid place-items-center px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm bg-white rounded-xl shadow p-6 space-y-4"
-      >
-        <h1 className="text-xl font-semibold">Acceso de Staff</h1>
-        {err && <p className="text-sm text-red-600">{err}</p>}
+    <div className="container-app">
+      <div className="card max-w-sm mx-auto">
+        <div className="card-body">
+          <h1 className="text-xl font-semibold">Acceso Staff</h1>
+          <p className="text-slate-600 text-sm">
+            Usa tu correo corporativo para ingresar al panel.
+          </p>
 
-        <label className="block text-sm">
-          Email
-          <input
-            className="mt-1 w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-            type="email"
-            value={email}
-            autoComplete="username"
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </label>
+          <form onSubmit={onSubmit} className="mt-4 space-y-3">
+            <label className="block">
+              <span className="text-sm font-medium">Correo</span>
+              <input
+                className="input mt-1"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tucorreo@negocio.com"
+                required
+              />
+            </label>
 
-        <label className="block text-sm">
-          Contraseña
-          <input
-            className="mt-1 w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
+            <label className="block">
+              <span className="text-sm font-medium">Contraseña</span>
+              <input
+                className="input mt-1"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </label>
 
-        <button
-          disabled={loading}
-          className="w-full rounded-md bg-blue-600 text-white font-medium py-2 disabled:opacity-60"
-        >
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+            {err && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2">
+                {err}
+              </div>
+            )}
+
+            <button className="button button-primary w-full" disabled={loading}>
+              {loading ? "Ingresando…" : "Entrar"}
+            </button>
+          </form>
+
+          <div className="mt-3 text-center">
+            <button
+              type="button"
+              className="text-xs text-slate-500 underline"
+              onClick={() => alert("Contacta al administrador para recuperar acceso.")}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
