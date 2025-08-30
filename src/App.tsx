@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Route, Routes, Navigate, Link, NavLink } from "react-router-dom";
-import TabBar from "./components/TabBar";
 import Home from "./pages/Home";
 import CustomerOTP from "./pages/CustomerOTP";
 import LoginStaff from "./pages/LoginStaff";
@@ -9,29 +8,29 @@ import Unauthorized from "./pages/Unauthorized";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
-  const [open, setOpen] = useState(false);
+const [open, setOpen] = useState(false);
 
-  const navClass = ({ isActive }: { isActive: boolean }) =>
-    isActive ? "nav-link-active" : "nav-link";
+const navClass = ({ isActive }: { isActive: boolean }) =>
+isActive ? "nav-link-active" : "nav-link";
 
-  return (
-    <div className="min-h-dvh flex flex-col bg-brand-cream">
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primaryDark text-white shadow">
-        <div className="container-app h-14 flex items-center justify-between gap-3">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 font-semibold tracking-wide"
-            onClick={() => setOpen(false)}
-          >
-            {/* Placeholder de logo — luego lo reemplazamos por imagen */}
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
-              ✂️
-            </span>
-            <span className="hidden xs:block">La Cubierta Barbería</span>
-          </Link>
+return (
+<div className="min-h-dvh flex flex-col bg-brand-cream">
+{/* HEADER /}
+<header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primaryDark text-white shadow">
+<div className="container-app h-14 flex items-center justify-between gap-3">
+<Link
+to="/"
+className="inline-flex items-center gap-2 font-semibold tracking-wide"
+onClick={() => setOpen(false)}
+>
+{/ Placeholder de logo — luego lo reemplazamos por imagen */}
+<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
+✂️
+</span>
+<span className="hidden xs:block">La Cubierta Barbería</span>
+</Link>
 
-               {/* Navegación desktop */}
+        {/* Navegación desktop */}
       <nav className="hidden sm:flex items-center gap-2 text-sm">
         <NavLink to="/" className={navClass}>
           Inicio
@@ -50,12 +49,17 @@ export default function App() {
       {/* Botón menú móvil */}
       <button
         aria-label="Abrir menú"
-        aria-expanded={open}
         className="sm:hidden nav-link-base hover:bg-white/10"
         onClick={() => setOpen((v) => !v)}
       >
+        {/* Ícono hamburguesa simple */}
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path
+            d="M4 7h16M4 12h16M4 17h16"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
     </div>
@@ -88,8 +92,6 @@ export default function App() {
       <Route path="/customer-auth" element={<CustomerOTP />} />
       <Route path="/login" element={<LoginStaff />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
-
-      {/* Protegida: admin o barbero */}
       <Route
         path="/dashboard"
         element={
@@ -98,7 +100,6 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   </main>
@@ -108,9 +109,7 @@ export default function App() {
     <div className="container-app py-6 text-xs text-slate-500">
       <div className="card">
         <div className="card-body flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <p>
-            © {new Date().getFullYear()} La Cubierta Barbería · Plataforma Axioma Partner
-          </p>
+          <p>© {new Date().getFullYear()} La Cubierta Barbería · Plataforma Axioma Partner</p>
           <p className="text-slate-400">
             Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa
           </p>
@@ -118,7 +117,4 @@ export default function App() {
       </div>
     </div>
   </footer>
-
-  {/* TAB BAR (móvil) */}
-  <TabBar />
 </div>
