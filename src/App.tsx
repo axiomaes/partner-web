@@ -16,7 +16,7 @@ export default function App(): JSX.Element {
   return (
     <div className="min-h-dvh flex flex-col bg-brand-cream">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primaryDark text-white shadow">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primary-dark text-white shadow">
         <div className="container-app h-14 flex items-center justify-between gap-3">
           <Link
             to="/"

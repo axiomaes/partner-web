@@ -1,11 +1,20 @@
 /* partner-web/src/index.css */
 
-/* Tailwind layers */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Carga Tailwind v4 */
+@import "tailwindcss";
 
-/* ===== Base (reset + tokens de marca) ===== */
+/* ===== Tokens de marca (Tailwind v4) ===== */
+@theme {
+  --color-brand-primary:       #0e7490;
+  --color-brand-primary-dark:  #155e75;
+  --color-brand-cream:         #f8fafc;
+  --color-brand-gold:          #f59e0b;
+
+  /* Sombra personalizada -> shadow-soft */
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.06);
+}
+
+/* ===== Base ===== */
 @layer base {
   html, body, #root {
     height: 100%;
@@ -23,7 +32,6 @@
     @apply text-blue-600 hover:underline underline-offset-2;
   }
 
-  /* Suavizado en plataformas WebKit */
   * {
     -webkit-tap-highlight-color: transparent;
   }
@@ -31,14 +39,14 @@
 
 /* ===== Componentes reutilizables ===== */
 @layer components {
-  /* Contenedor responsive por defecto */
+  /* Contenedor responsive */
   .container-app {
     @apply max-w-5xl mx-auto px-4;
   }
 
   /* Tarjetas */
   .card {
-    @apply bg-white rounded-xl shadow-soft border border-slate-100;
+    @apply bg-white rounded-xl border border-slate-200 shadow-soft;
   }
   .card-body {
     @apply p-4 sm:p-6;
@@ -61,22 +69,25 @@
     @apply mt-1 text-xs text-slate-500;
   }
 
-  /* Botones */
-  .btn {
+  /* Botones (base aplicada a cada variante) */
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
            font-medium transition focus:outline-none
            focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand.primary text-white hover:bg-brand.primaryDark
+    @apply bg-brand-primary text-white hover:bg-brand-primary-dark
            focus:ring-white/30;
   }
   .btn-outline {
-    @apply btn border border-slate-300 text-slate-800 bg-white hover:bg-slate-50
+    @apply border border-slate-300 text-slate-800 bg-white hover:bg-slate-50
            focus:ring-blue-500/30;
   }
   .btn-ghost {
-    @apply btn bg-transparent text-slate-800 hover:bg-black/5
+    @apply bg-transparent text-slate-800 hover:bg-black/5
            focus:ring-blue-500/30;
   }
 
@@ -86,27 +97,27 @@
            bg-slate-100 text-slate-700;
   }
   .badge-gold {
-    @apply bg-brand.gold/15 text-brand.gold;
+    @apply bg-brand-gold/15 text-brand-gold;
   }
 
-  /* Links de navegación (usados con NavLink) */
-  .nav-link-base {
-    @apply px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30;
-  }
+  /* Links de navegación (para NavLink) */
   .nav-link {
-    @apply nav-link-base opacity-90 hover:bg-white/10;
+    @apply px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30
+           opacity-90 hover:bg-white/10;
   }
   .nav-link-active {
-    @apply nav-link-base font-semibold underline decoration-2 underline-offset-4;
+    @apply px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30
+           font-semibold underline decoration-2 underline-offset-4;
   }
 
-  /* Secciones espaciadas (para páginas) */
+  /* Sección por página
+     ⚠️ No `@apply container-app` (clase personalizada). Usa utilidades directamente. */
   .section {
-    @apply container-app py-6 sm:py-8;
+    @apply max-w-5xl mx-auto px-4 py-6 sm:py-8;
   }
 }
 
-/* ===== Utilidades micro ===== */
+/* ===== Utilidades pequeñas ===== */
 @layer utilities {
   .glass {
     @apply bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50;
