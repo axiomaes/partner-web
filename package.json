@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "format": "prettier --write .",
     "prepare": "husky",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "type-check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.85.5",

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+echo "🔎 Running type-check and build before push..."
+npm run build
+
+RESULT=$?
+if [ $RESULT -ne 0 ]; then
+  echo "❌ Build failed. Push aborted."
+  exit 1
+fi
+
+echo "✅ Build OK. Proceeding with push."
