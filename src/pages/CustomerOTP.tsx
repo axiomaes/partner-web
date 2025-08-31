@@ -37,10 +37,10 @@ export default function CustomerOTP() {
 
   return (
     <div className="container-app">
-      <div className="card max-w-sm mx-auto">
+      <div className="card mx-auto max-w-sm">
         <div className="card-body">
           <h1 className="text-xl font-semibold">Acceso Clientes</h1>
-          <p className="text-slate-600 text-sm">
+          <p className="text-sm text-slate-600">
             Te enviaremos un código a tu WhatsApp. No necesitas contraseña.
           </p>
 

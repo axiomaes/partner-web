@@ -23,10 +23,10 @@ export default function App(): JSX.Element {
     }`;
 
   return (
-    <div className="min-h-dvh flex flex-col bg-brand-cream">
+    <div className="bg-brand-cream flex min-h-dvh flex-col">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primaryDark text-white shadow">
-        <div className="container-app h-14 flex items-center justify-between gap-3">
+      <header className="from-brand-primary to-brand-primaryDark sticky top-0 z-40 bg-gradient-to-r text-white shadow">
+        <div className="container-app flex h-14 items-center justify-between gap-3">
           <Link
             to="/"
             className="inline-flex items-center gap-2 font-semibold tracking-wide"
@@ -36,11 +36,11 @@ export default function App(): JSX.Element {
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
               ✂️
             </span>
-            <span className="hidden xs:block">La Cubierta Barbería</span>
+            <span className="xs:block hidden">La Cubierta Barbería</span>
           </Link>
 
           {/* Navegación desktop */}
-          <nav className="hidden sm:flex items-center gap-2 text-sm">
+          <nav className="hidden items-center gap-2 text-sm sm:flex">
             <NavLink to="/" className={navClass}>
               Inicio
             </NavLink>
@@ -62,13 +62,7 @@ export default function App(): JSX.Element {
             onClick={() => setOpen((v) => !v)}
           >
             {/* Ícono hamburguesa simple */}
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M4 7h16M4 12h16M4 17h16"
                 stroke="currentColor"
@@ -81,26 +75,18 @@ export default function App(): JSX.Element {
 
         {/* Menú móvil desplegable */}
         {open && (
-          <div className="sm:hidden border-t border-white/10">
-            <div className="container-app py-2 flex flex-col">
+          <div className="border-t border-white/10 sm:hidden">
+            <div className="container-app flex flex-col py-2">
               <NavLink to="/" className={navClass} onClick={() => setOpen(false)}>
                 Inicio
               </NavLink>
-              <NavLink
-                to="/customer-auth"
-                className={navClass}
-                onClick={() => setOpen(false)}
-              >
+              <NavLink to="/customer-auth" className={navClass} onClick={() => setOpen(false)}>
                 Acceso clientes
               </NavLink>
               <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>
                 Staff
               </NavLink>
-              <NavLink
-                to="/dashboard"
-                className={navClass}
-                onClick={() => setOpen(false)}
-              >
+              <NavLink to="/dashboard" className={navClass} onClick={() => setOpen(false)}>
                 Panel
               </NavLink>
             </div>
@@ -109,7 +95,7 @@ export default function App(): JSX.Element {
       </header>
 
       {/* CONTENIDO */}
-      <main className="flex-1 section">
+      <main className="section flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/customer-auth" element={<CustomerOTP />} />
@@ -131,14 +117,10 @@ export default function App(): JSX.Element {
       <footer className="mt-6">
         <div className="container-app py-6 text-xs text-slate-500">
           <div className="card">
-            <div className="card-body flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <p>
-                © {new Date().getFullYear()} La Cubierta Barbería · Plataforma
-                Axioma Partner
-              </p>
+            <div className="card-body flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <p>© {new Date().getFullYear()} La Cubierta Barbería · Plataforma Axioma Partner</p>
               <p className="text-slate-400">
-                Hecho con <span className="text-brand-gold">★</span> por Axioma
-                Creativa
+                Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa
               </p>
             </div>
           </div>

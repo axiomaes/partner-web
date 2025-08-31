@@ -1,8 +1,8 @@
 {
   "recommendations": [
-    "esbenp.prettier-vscode",         // Prettier para formateo consistente
-    "dbaeumer.vscode-eslint",        // ESLint para seguir las reglas del proyecto
-    "bradlc.vscode-tailwindcss",     // Tailwind CSS IntelliSense (clases y tokens @theme)
-    "Prisma.prisma"                  // Prisma (para el repo de la API)
+    "esbenp.prettier-vscode", // Prettier para formateo consistente
+    "dbaeumer.vscode-eslint", // ESLint para seguir las reglas del proyecto
+    "bradlc.vscode-tailwindcss", // Tailwind CSS IntelliSense (clases y tokens @theme)
+    "Prisma.prisma" // Prisma (para el repo de la API)
   ]
 }

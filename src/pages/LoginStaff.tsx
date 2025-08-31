@@ -34,10 +34,10 @@ export default function LoginStaff() {
 
   return (
     <div className="container-app">
-      <div className="card max-w-sm mx-auto">
+      <div className="card mx-auto max-w-sm">
         <div className="card-body">
           <h1 className="text-xl font-semibold">Acceso Staff</h1>
-          <p className="text-slate-600 text-sm">
+          <p className="text-sm text-slate-600">
             Usa tu correo corporativo para ingresar al panel.
           </p>
 
@@ -69,7 +69,7 @@ export default function LoginStaff() {
             </label>
 
             {err && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2">
+              <div className="rounded border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
                 {err}
               </div>
             )}

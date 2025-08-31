@@ -19,12 +19,14 @@
   --color-brand-gold: #f59e0b;
 
   /* Sombras personalizadas */
-  --shadow-soft: 0 1px 2px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.06);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
 /* ===== Base ===== */
 @layer base {
-  html, body, #root {
+  html,
+  body,
+  #root {
     height: 100%;
   }
 
@@ -32,12 +34,15 @@
     @apply bg-brand-cream text-slate-800 antialiased;
   }
 
-  h1, h2, h3, h4 {
-    @apply text-slate-900 font-semibold;
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold text-slate-900;
   }
 
   a {
-    @apply text-blue-600 hover:underline underline-offset-2;
+    @apply text-blue-600 underline-offset-2 hover:underline;
   }
 
   * {
@@ -49,17 +54,17 @@
 @layer components {
   /* Contenedor responsive */
   .container-app {
-    @apply max-w-5xl mx-auto px-4;
+    @apply mx-auto max-w-5xl px-4;
   }
 
   /* Sección por página */
   .section {
-    @apply max-w-5xl mx-auto px-4 py-6 sm:py-8;
+    @apply mx-auto max-w-5xl px-4 py-6 sm:py-8;
   }
 
   /* Tarjetas */
   .card {
-    @apply bg-white rounded-xl border border-slate-200 shadow-soft;
+    @apply shadow-soft rounded-xl border border-slate-200 bg-white;
   }
   .card-body {
     @apply p-4 sm:p-6;
@@ -67,16 +72,13 @@
 
   /* Inputs & labels */
   .label {
-    @apply block text-sm font-medium text-slate-700 mb-1;
+    @apply mb-1 block text-sm font-medium text-slate-700;
   }
   .input {
-    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2
-           placeholder:text-slate-400
-           focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500
-           transition;
+    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40 focus:outline-none;
   }
   .input-error {
-    @apply border-red-500 focus:ring-red-500/30 focus:border-red-500;
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
   }
   .help {
     @apply mt-1 text-xs text-slate-500;
@@ -87,27 +89,21 @@
   .btn-primary,
   .btn-outline,
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
-           font-medium transition focus:outline-none
-           focus:ring-2 focus:ring-offset-0 disabled:opacity-60 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium transition focus:ring-2 focus:ring-offset-0 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60;
   }
   .btn-primary {
-    @apply bg-brand-primary text-white hover:bg-brand-primary-dark
-           focus:ring-white/30;
+    @apply bg-brand-primary hover:bg-brand-primary-dark text-white focus:ring-white/30;
   }
   .btn-outline {
-    @apply border border-slate-300 text-slate-800 bg-white hover:bg-slate-50
-           focus:ring-blue-500/30;
+    @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus:ring-blue-500/30;
   }
   .btn-ghost {
-    @apply bg-transparent text-slate-800 hover:bg-black/5
-           focus:ring-blue-500/30;
+    @apply bg-transparent text-slate-800 hover:bg-black/5 focus:ring-blue-500/30;
   }
 
   /* Pills / badges */
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium
-           bg-slate-100 text-slate-700;
+    @apply inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700;
   }
   .badge-gold {
     @apply bg-brand-gold/15 text-brand-gold;
@@ -115,16 +111,14 @@
 
   /* Links de navegación */
   .nav-link-base {
-    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30;
+    @apply rounded-md px-3 py-1.5 transition focus:ring-2 focus:ring-white/30 focus:outline-none;
   }
   /* En v4 no se puede @apply una clase custom; expandimos utilidades */
   .nav-link {
-    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30
-           text-white/90 hover:text-white hover:bg-white/10;
+    @apply rounded-md px-3 py-1.5 text-white/90 transition hover:bg-white/10 hover:text-white focus:ring-2 focus:ring-white/30 focus:outline-none;
   }
   .nav-link-active {
-    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30
-           text-white font-semibold underline decoration-2 underline-offset-4;
+    @apply rounded-md px-3 py-1.5 font-semibold text-white underline decoration-2 underline-offset-4 transition focus:ring-2 focus:ring-white/30 focus:outline-none;
   }
 }
 

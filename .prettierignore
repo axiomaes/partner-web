@@ -1,0 +1,27 @@
+# dependencias
+node_modules
+
+# builds
+dist
+dist-ssr
+build
+
+# logs
+*.log
+
+# lockfiles locales (si no quieres tocarlos con prettier)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# config de contenedor/infra
+Dockerfile
+docker-compose.yml
+
+# outputs de prisma
+prisma/generated
+
+# VSCode & sistema
+.vscode
+.idea
+.DS_Store
