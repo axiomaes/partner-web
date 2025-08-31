@@ -10,13 +10,22 @@ import ProtectedRoute from "./components/ProtectedRoute";
 export default function App(): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
 
+  // Base común para links del header
+  const navBase =
+    "px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30";
+
+  // NavLink con estado activo/inactivo
   const navClass = ({ isActive }: { isActive: boolean }): string =>
-    isActive ? "nav-link-active" : "nav-link";
+    `${navBase} ${
+      isActive
+        ? "font-semibold underline decoration-2 underline-offset-4"
+        : "opacity-90 hover:bg-white/10"
+    }`;
 
   return (
     <div className="min-h-dvh flex flex-col bg-brand-cream">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primary-dark text-white shadow">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primaryDark text-white shadow">
         <div className="container-app h-14 flex items-center justify-between gap-3">
           <Link
             to="/"
@@ -49,7 +58,7 @@ export default function App(): JSX.Element {
           {/* Botón menú móvil */}
           <button
             aria-label="Abrir menú"
-            className="sm:hidden nav-link-base text-white hover:bg-white/10"
+            className={`sm:hidden ${navBase} hover:bg-white/10`}
             onClick={() => setOpen((v) => !v)}
           >
             {/* Ícono hamburguesa simple */}
@@ -72,7 +81,7 @@ export default function App(): JSX.Element {
 
         {/* Menú móvil desplegable */}
         {open && (
-          <div className="sm:hidden bg-brand-primary-dark/95 text-white border-t border-white/10 shadow-lg backdrop-blur">
+          <div className="sm:hidden border-t border-white/10">
             <div className="container-app py-2 flex flex-col">
               <NavLink to="/" className={navClass} onClick={() => setOpen(false)}>
                 Inicio
@@ -100,7 +109,7 @@ export default function App(): JSX.Element {
       </header>
 
       {/* CONTENIDO */}
-      <main className="flex-1 container-app py-6 sm:py-8">
+      <main className="flex-1 section">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/customer-auth" element={<CustomerOTP />} />
@@ -121,8 +130,8 @@ export default function App(): JSX.Element {
       {/* FOOTER */}
       <footer className="mt-6">
         <div className="container-app py-6 text-xs text-slate-500">
-          <div className="bg-white rounded-2xl shadow border border-slate-100">
-            <div className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="card">
+            <div className="card-body flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p>
                 © {new Date().getFullYear()} La Cubierta Barbería · Plataforma
                 Axioma Partner
