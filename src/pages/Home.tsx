@@ -1,44 +1,25 @@
-import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Card } from "../components/Card";
+import { Stat } from "../components/Stat";
+import { api } from "../shared/api";
 
 export default function Home() {
+  const { data } = useQuery({
+    queryKey: ["stats"],
+    queryFn: async () => (await api.get("/stats/overview")).data,
+  });
+
   return (
-    <div className="container-app space-y-6">
-      {/* Hero */}
-      <section className="card overflow-hidden">
-        <div className="card-body from-brand-primary to-brand-primaryDark bg-gradient-to-br text-white">
-          <h1 className="text-2xl font-semibold tracking-tight">La Cubierta Barbería</h1>
-          <p className="mt-1 text-white/80">Agenda, fidelización y mensajería en un mismo lugar.</p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link to="/login" className="button button-black">
-              Acceso Staff
-            </Link>
-            <Link to="/customer-auth" className="button button-ghost">
-              Acceso Clientes
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Bloques rápidos */}
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div className="card">
-          <div className="card-body">
-            <h3 className="font-semibold">Reservas y turnos</h3>
-            <p className="text-sm text-slate-600">
-              Gestiona horarios, barberos y disponibilidad desde el panel.
-            </p>
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-body">
-            <h3 className="font-semibold">Clientes fieles</h3>
-            <p className="text-sm text-slate-600">
-              Reglas de puntos, campañas y WhatsApp transaccional.
-            </p>
-          </div>
-        </div>
-      </section>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stat label="Clientes" value={data?.customers ?? "—"} />
+      <Stat label="Visitas (30d)" value={data?.visits30d ?? "—"} />
+      <Stat label="Recompensas" value={data?.rewards ?? "—"} />
+      <Stat label="Activas hoy" value={data?.activeToday ?? "—"} />
+      <div className="sm:col-span-2 lg:col-span-4">
+        <Card title="Actividad reciente">
+          <div className="text-sm text-slate-600">Sin datos aún.</div>
+        </Card>
+      </div>
     </div>
   );
 }
