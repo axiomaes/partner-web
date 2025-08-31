@@ -100,15 +100,16 @@
     @apply bg-brand-gold/15 text-brand-gold;
   }
 
-  /* Links de navegación (para NavLink) */
-  .nav-link {
-    @apply px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30
-           opacity-90 hover:bg-white/10;
-  }
-  .nav-link-active {
-    @apply px-2 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-white/30
-           font-semibold underline decoration-2 underline-offset-4;
-  }
+  /* === Links de navegación (desktop + móvil) === */
+.nav-link-base {
+  @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30;
+}
+.nav-link {
+  @apply nav-link-base text-white/90 hover:text-white hover:bg-white/10;
+}
+.nav-link-active {
+  @apply nav-link-base text-white font-semibold underline decoration-2 underline-offset-4;
+}
 
   /* Sección por página
      ⚠️ No `@apply container-app` (clase personalizada). Usa utilidades directamente. */
