@@ -1,17 +1,25 @@
 /* partner-web/src/index.css */
 
-/* Carga Tailwind v4 */
+/* === Tailwind v4 === */
 @import "tailwindcss";
 
-/* ===== Tokens de marca (Tailwind v4) ===== */
+/* === Design tokens (Tailwind v4) ===
+   Define colores y sombras como custom properties para generar utilidades:
+   - bg-brand-cream
+   - bg-brand-primary
+   - bg-brand-primary-dark
+   - bg-brand-gold (incluye modificadores como /15)
+   - shadow-soft
+*/
 @theme {
-  --color-brand-primary:       #0e7490;
-  --color-brand-primary-dark:  #155e75;
-  --color-brand-cream:         #f8fafc;
-  --color-brand-gold:          #f59e0b;
+  /* Colores de marca */
+  --color-brand-cream: #f8fafc;
+  --color-brand-primary: #0e7490;
+  --color-brand-primary-dark: #155e75;
+  --color-brand-gold: #f59e0b;
 
-  /* Sombra personalizada -> shadow-soft */
-  --shadow-soft: 0 1px 2px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.06);
+  /* Sombras personalizadas */
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.06);
 }
 
 /* ===== Base ===== */
@@ -42,6 +50,11 @@
   /* Contenedor responsive */
   .container-app {
     @apply max-w-5xl mx-auto px-4;
+  }
+
+  /* Sección por página */
+  .section {
+    @apply max-w-5xl mx-auto px-4 py-6 sm:py-8;
   }
 
   /* Tarjetas */
@@ -100,21 +113,18 @@
     @apply bg-brand-gold/15 text-brand-gold;
   }
 
-  /* === Links de navegación (desktop + móvil) === */
-.nav-link-base {
-  @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30;
-}
-.nav-link {
-  @apply nav-link-base text-white/90 hover:text-white hover:bg-white/10;
-}
-.nav-link-active {
-  @apply nav-link-base text-white font-semibold underline decoration-2 underline-offset-4;
-}
-
-  /* Sección por página
-     ⚠️ No `@apply container-app` (clase personalizada). Usa utilidades directamente. */
-  .section {
-    @apply max-w-5xl mx-auto px-4 py-6 sm:py-8;
+  /* Links de navegación */
+  .nav-link-base {
+    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30;
+  }
+  /* En v4 no se puede @apply una clase custom; expandimos utilidades */
+  .nav-link {
+    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30
+           text-white/90 hover:text-white hover:bg-white/10;
+  }
+  .nav-link-active {
+    @apply px-3 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-white/30
+           text-white font-semibold underline decoration-2 underline-offset-4;
   }
 }
 
