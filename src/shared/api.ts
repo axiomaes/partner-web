@@ -1,9 +1,7 @@
 // partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
-import { loadAuth } from "./auth";
+import { getToken } from "./auth";
 
-// Detecta si estamos en el dominio de Stacks y usa el API público.
-// Si VITE_API_BASE está definido, lo respeta.
 const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
 
 function computeBaseURL(): string {
@@ -13,27 +11,51 @@ function computeBaseURL(): string {
   }
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    // Ajusta el patrón si cambias el dominio
     if (host.endsWith(".axioma-creativa.es")) return PROD_API;
   }
-  // Dev por defecto
   return "http://localhost:3000";
 }
 
 const baseURL = computeBaseURL();
 
 export const api: AxiosInstance = axios.create({ baseURL });
-
-// JSON por defecto
 api.defaults.headers.common["Content-Type"] = "application/json";
 
-// Interceptor: normaliza headers para evitar TS2322
+// Interceptor: inyecta token desde auth.getToken()
 api.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
-  const auth = loadAuth();
-  if (auth?.token) headers.set("Authorization", `Bearer ${auth.token}`);
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   config.headers = headers;
   return config;
 });
 
-export default api;
+// === Helpers específicos ===
+
+// Crear cliente
+export const createCustomer = (name: string, phone: string, businessId: string) =>
+  api.post("/customers", {
+    name,
+    phone,
+    business: { connect: { id: businessId } },
+  }).then(r => r.data);
+
+// Crear staff (usuario)
+export const createStaff = (
+  email: string,
+  password: string,
+  businessId: string,
+  role: "ADMIN" | "BARBER"
+) =>
+  api.post("/users", {
+    email,
+    password,
+    role,
+    business: { connect: { id: businessId } },
+  }).then(r => r.data);
+
+// Listar clientes
+export const listCustomers = () =>
+  api.get("/customers").then(r =>
+    Array.isArray(r.data) ? r.data : (r.data.items ?? r.data.data ?? [])
+  );

@@ -36,3 +36,37 @@ export function hasRole(role: UserRole | UserRole[]): boolean {
   const wanted = Array.isArray(role) ? role : [role];
   return wanted.includes(auth.user.role);
 }
+
+/* === NUEVO: decodificar payload del JWT (para businessId, etc.) === */
+export function getJwtPayload(): Record<string, unknown> | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const b64 = (token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(b64);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function getBusinessId(): string | null {
+  const p = getJwtPayload();
+  const id = (p?.["businessId"] as string) || null;
+  return id && typeof id === "string" ? id : null;
+}
+
+/* === NUEVO: mini hook de sesión para páginas === */
+export function useSession() {
+  const auth = loadAuth();
+  return {
+    token: auth?.token ?? null,
+    role: (auth?.user.role ?? "BARBER") as UserRole,
+    businessId: getBusinessId() || "",
+    email: auth?.user.email ?? "",
+  };
+}
+
+export function isAdmin(role?: UserRole | null) {
+  return role === "ADMIN";
+}
