@@ -6,9 +6,7 @@ const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
 
 function computeBaseURL(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
-  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") {
-    return viteEnv;
-  }
+  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") return viteEnv;
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host.endsWith(".axioma-creativa.es")) return PROD_API;
@@ -21,7 +19,7 @@ const baseURL = computeBaseURL();
 export const api: AxiosInstance = axios.create({ baseURL });
 api.defaults.headers.common["Content-Type"] = "application/json";
 
-// Interceptor: inyecta token desde auth.getToken()
+// Inyecta token
 api.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
   const token = getToken();
@@ -30,7 +28,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// === Helpers específicos ===
+// ==== Helpers de dominio ====
 
 // Crear cliente
 export const createCustomer = (name: string, phone: string, businessId: string) =>
@@ -59,3 +57,17 @@ export const listCustomers = () =>
   api.get("/customers").then(r =>
     Array.isArray(r.data) ? r.data : (r.data.items ?? r.data.data ?? [])
   );
+
+// ---- usadas por CustomerDetail.tsx ----
+
+// Añadir visita (suma “puntos”)
+export const addVisit = (customerId: string, notes?: string) =>
+  api.post(`/customers/${customerId}/visits`, { notes }).then(r => r.data);
+
+// Recompensas del cliente
+export const getCustomerRewards = (customerId: string) =>
+  api.get(`/customers/${customerId}/rewards`).then(r => r.data);
+
+// Visitas del cliente (si tu API expone GET)
+export const getCustomerVisits = (customerId: string) =>
+  api.get(`/customers/${customerId}/visits`).then(r => r.data);
