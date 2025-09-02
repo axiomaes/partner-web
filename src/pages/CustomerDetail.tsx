@@ -1,5 +1,5 @@
 // partner-web/src/pages/CustomerDetail.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, addVisit, getCustomerRewards, getCustomerVisits } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
@@ -53,42 +53,47 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>("");
+
   const [msg, setMsg] = useState<string>("");
 
   // Filtros visuales
-  const [rewardFilter, setRewardFilter] = useState<"" | Reward["status"]>("");
+  const [rewardFilter, setRewardFilter] =
+    useState<"" | Reward["status"]>("");
   const [queryVisit, setQueryVisit] = useState<string>("");
 
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      try {
-        const [cRes, rw, vs] = await Promise.allSettled([
-          api.get(`/customers/${encodeURIComponent(id)}`),
-          getCustomerRewards(id),
-          getCustomerVisits(id),
-        ]);
-
-        if (!alive) return;
-
-        if (cRes.status === "fulfilled") setCustomer(cRes.value.data as Customer);
-        else setCustomer(null);
-
-        if (rw.status === "fulfilled") setRewards(rw.value);
-        else setRewards([]);
-
-        if (vs.status === "fulfilled") setVisits(vs.value);
-        else setVisits([]);
-      } catch {
-        // ya manejado arriba
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [c, rw, vs] = await Promise.all([
+        api.get(`/customers/${encodeURIComponent(id)}`).then(r => r.data as Customer),
+        getCustomerRewards(id).catch(() => [] as Reward[]),
+        getCustomerVisits(id).catch(() => [] as Visit[]),
+      ]);
+      setCustomer(c);
+      setRewards(rw);
+      setVisits(vs);
+    } catch (e: any) {
+      setCustomer(null);
+      setRewards([]);
+      setVisits([]);
+      setLoadError(e?.response?.data?.message || e?.message || "No se pudo cargar el cliente.");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    if (!id) {
+      setLoadError("Cliente no especificado.");
+      setLoading(false);
+      return;
+    }
+    fetchAll();
+  }, [id, fetchAll]);
 
   const onAddVisit = async () => {
     setMsg("");
@@ -98,7 +103,7 @@ export default function CustomerDetail() {
         r?.newReward?.id ? ` · Nueva recompensa: ${r.newReward.id}` : ""
       }`;
       setMsg(text);
-      // refrescar
+      // refrescar (no bloquea la UI)
       getCustomerRewards(id).then(setRewards).catch(() => {});
       getCustomerVisits(id).then(setVisits).catch(() => {});
     } catch (e: any) {
@@ -123,7 +128,8 @@ export default function CustomerDetail() {
     });
   }, [visits, queryVisit]);
 
-  if (!customer) {
+  // ===== Estados de carga / error =====
+  if (loading) {
     return (
       <div className="p-6">
         <div className="flex items-center gap-3">
@@ -134,11 +140,33 @@ export default function CustomerDetail() {
     );
   }
 
-  const phoneDisplay = admin ? customer.phone || "—" : maskPhone(customer.phone);
-  const emailDisplay = admin ? customer.email || "—" : maskEmail(customer.email);
+  if (loadError || !customer) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
+        <div className="breadcrumbs text-sm">
+          <ul>
+            <li><Link to="/app">Clientes</Link></li>
+            <li className="font-medium">Detalle</li>
+          </ul>
+        </div>
+
+        <div className="alert alert-warning">
+          <span>{loadError || "No se encontró el cliente."}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link to="/app" className="btn btn-ghost">← Volver</Link>
+          <button onClick={fetchAll} className="btn btn-primary">Reintentar</button>
+        </div>
+      </div>
+    );
+  }
+
+  const phoneDisplay = admin ? (customer.phone || "—") : maskPhone(customer.phone);
+  const emailDisplay = admin ? (customer.email || "—") : maskEmail(customer.email);
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
       {/* Breadcrumb + Acciones */}
       <div className="flex items-center justify-between gap-3">
         <div className="breadcrumbs text-sm">
@@ -310,7 +338,9 @@ export default function CustomerDetail() {
                 <tbody>
                   {filteredVisits.map((v) => (
                     <tr key={v.id}>
-                      <td className="whitespace-nowrap">{new Date(v.visitedAt).toLocaleString()}</td>
+                      <td className="whitespace-nowrap">
+                        {new Date(v.visitedAt).toLocaleString()}
+                      </td>
                       <td>{v.notes || ""}</td>
                     </tr>
                   ))}
