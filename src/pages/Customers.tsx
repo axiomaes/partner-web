@@ -59,6 +59,9 @@ export default function CustomersPage() {
 
   return (
     <AppLayout title="Clientes" subtitle="Gestión de clientes registrados">
+      {/* DEBUG marker */}
+      <div className="alert alert-info mb-3">DEBUG · Customers.tsx render OK</div>
+
       {/* Toolbar unificada */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div className="join w-full md:w-auto">
