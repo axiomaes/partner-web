@@ -2,14 +2,16 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, createCustomer } from "@/shared/api";
-import { useSession } from "@/shared/auth";
+import { useSession, isAdmin } from "@/shared/auth";
 import AppLayout from "@/layout/AppLayout";
 
 type Created = { id: string; name: string; existed?: boolean };
 
 export default function CustomersNew() {
   const navigate = useNavigate();
-  const { businessId } = useSession();
+  const { businessId, role } = useSession();
+  const admin = isAdmin(role);
+  const isStaff = !admin; // cualquier rol no-admin
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+34");
@@ -30,9 +32,13 @@ export default function CustomersNew() {
     try {
       const c = await createCustomer(name.trim(), phone.trim(), businessId);
       setCreated(c);
+
+      // Si es staff, limpiamos el teléfono del estado para no dejarlo visible en la UI
+      if (isStaff) setPhone("+34");
+
       setMsg(
         c.existed
-          ? `⚠️ Este número ya estaba registrado. Mostramos su QR para comenzar a usarlo.`
+          ? `⚠️ Este cliente ya existía. Mostramos su QR para comenzar a usarlo.`
           : `✅ Cliente creado correctamente.`
       );
     } catch (err: any) {
@@ -45,7 +51,6 @@ export default function CustomersNew() {
   const onPrint = () => {
     if (!qrUrl) return;
     const w = window.open(qrUrl, "_blank", "noopener,noreferrer");
-    // algunos navegadores bloquean auto-print; el usuario puede imprimir desde la nueva pestaña
     if (w) w.focus();
   };
 
@@ -75,8 +80,11 @@ export default function CustomersNew() {
                   <span className="label-text">Teléfono</span>
                 </label>
                 <input
+                  // STAFF no ve el número mientras escribe
+                  type={isStaff ? "password" : "tel"}
+                  inputMode="tel"
                   className="input input-bordered"
-                  placeholder="+346XXXXXXXX"
+                  placeholder={admin ? "+346XXXXXXXX" : "+34•••••••••"}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   required
@@ -84,6 +92,7 @@ export default function CustomersNew() {
                 <label className="label">
                   <span className="label-text-alt">
                     Formato recomendado: <code className="font-mono">+34</code> seguido del número.
+                    {isStaff && " (oculto para staff)"}
                   </span>
                 </label>
               </div>
@@ -139,7 +148,6 @@ export default function CustomersNew() {
                 </div>
 
                 <div className="p-4 rounded-box border border-base-300 bg-base-200">
-                  {/* Mostramos el PNG servido por la API */}
                   <img
                     src={qrUrl}
                     alt="QR del cliente"
