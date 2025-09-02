@@ -21,7 +21,6 @@ type Reward = {
   kind?: string | null;
 };
 
-/** Progreso hacia la próxima recompensa (desde API /customers/:id/progress) */
 type Progress = { count: number; target: number; toNextReward: number; pending: boolean };
 
 function maskPhone(p?: string | null) {
@@ -33,35 +32,29 @@ function maskEmail(e?: string | null) {
   const uu = u.slice(0, 2) + "•".repeat(Math.max(0, u.length - 2));
   return `${uu}@${d}`;
 }
-
 function niceRewardName(r: Reward) {
   const raw = r.note || r.kind || "";
   if (/auto-?issued by visits threshold/i.test(raw)) return "Recompensa por visitas";
   return raw || "Recompensa";
 }
-
 function rewardBadge(s: Reward["status"]) {
   switch (s) {
-    case "PENDING":
-      return <span className="badge badge-warning">Pendiente</span>;
-    case "REDEEMED":
-      return <span className="badge badge-success">Canjeada</span>;
-    case "EXPIRED":
-      return <span className="badge badge-ghost">Expirada</span>;
-    default:
-      return <span className="badge">—</span>;
+    case "PENDING":   return <span className="badge badge-warning">Pendiente</span>;
+    case "REDEEMED":  return <span className="badge badge-success">Canjeada</span>;
+    case "EXPIRED":   return <span className="badge badge-ghost">Expirada</span>;
+    default:          return <span className="badge">—</span>;
   }
 }
-
-function tagLabel(t?: Customer["tag"]) {
-  return t ?? "NONE";
-}
+function tagLabel(t?: Customer["tag"]) { return t ?? "NONE"; }
 
 export default function CustomerDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
+
+  // Habilita botón "Reenviar QR" desde .env del front
+  const allowWaResend = (import.meta as any).env?.VITE_ALLOW_WA_RESEND === "true";
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -70,11 +63,9 @@ export default function CustomerDetail() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>("");
-
   const [msg, setMsg] = useState<string>("");
-  const [working, setWorking] = useState(false); // añade/borra en curso
+  const [working, setWorking] = useState(false);
 
-  // Filtros visuales
   const [rewardFilter, setRewardFilter] = useState<"" | Reward["status"]>("");
   const [queryVisit, setQueryVisit] = useState<string>("");
 
@@ -109,18 +100,15 @@ export default function CustomerDetail() {
     fetchAll();
   }, [id, fetchAll]);
 
-  // Cargar progreso desde la API limpia
   useEffect(() => {
     if (!id) return;
-    api
-      .get(`/customers/${encodeURIComponent(id)}/progress`)
+    api.get(`/customers/${encodeURIComponent(id)}/progress`)
       .then((r) => setProgress(r.data as Progress))
       .catch(() => setProgress(null));
   }, [id]);
 
   const refreshProgress = useCallback(() => {
-    api
-      .get(`/customers/${encodeURIComponent(id)}/progress`)
+    api.get(`/customers/${encodeURIComponent(id)}/progress`)
       .then((res) => setProgress(res.data as Progress))
       .catch(() => {});
   }, [id]);
@@ -134,7 +122,6 @@ export default function CustomerDetail() {
         r?.newReward?.id ? ` · Nueva recompensa: ${r.newReward.id}` : ""
       }`;
       setMsg(text);
-      // refrescar (no bloquea la UI)
       getCustomerRewards(id).then(setRewards).catch(() => {});
       getCustomerVisits(id).then(setVisits).catch(() => {});
       refreshProgress();
@@ -145,11 +132,23 @@ export default function CustomerDetail() {
     }
   };
 
+  const onResendQr = async () => {
+    if (!admin) return;
+    setMsg("");
+    setWorking(true);
+    try {
+      await api.post(`/customers/${encodeURIComponent(id)}/qr/send`);
+      setMsg("📨 QR reenviado por WhatsApp.");
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || e.message || "No se pudo reenviar el QR");
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const onDelete = async () => {
     if (!admin || !customer) return;
-    const ok = window.confirm(
-      `¿Eliminar al cliente "${customer.name}"? Esta acción no se puede deshacer.`
-    );
+    const ok = window.confirm(`¿Eliminar al cliente "${customer.name}"?`);
     if (!ok) return;
     setWorking(true);
     setMsg("");
@@ -163,14 +162,12 @@ export default function CustomerDetail() {
     }
   };
 
-  // Derivados UI
   const totalVisits = visits.length;
 
   const filteredRewards = useMemo(
     () => (rewardFilter ? rewards.filter((r) => r.status === rewardFilter) : rewards),
     [rewards, rewardFilter]
   );
-
   const filteredVisits = useMemo(() => {
     const q = queryVisit.trim().toLowerCase();
     if (!q) return visits;
@@ -180,7 +177,6 @@ export default function CustomerDetail() {
     });
   }, [visits, queryVisit]);
 
-  // ===== Estados de carga / error con layout unificado =====
   if (loading) {
     return (
       <AppLayout title="Cliente" subtitle="Cargando detalle…">
@@ -200,15 +196,11 @@ export default function CustomerDetail() {
         <div className="flex items-center justify-between mb-4">
           <div className="breadcrumbs text-sm">
             <ul>
-              <li>
-                <Link to="/app/customers">Clientes</Link>
-              </li>
+              <li><Link to="/app/customers">Clientes</Link></li>
               <li className="font-medium">Detalle</li>
             </ul>
           </div>
-          <Link to="/app/customers" className="btn btn-ghost btn-sm">
-            ← Volver
-          </Link>
+          <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver</Link>
         </div>
 
         <div className="alert alert-warning mb-4">
@@ -216,9 +208,7 @@ export default function CustomerDetail() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={fetchAll} className="btn btn-primary">
-            Reintentar
-          </button>
+          <button onClick={fetchAll} className="btn btn-primary">Reintentar</button>
         </div>
       </AppLayout>
     );
@@ -229,44 +219,35 @@ export default function CustomerDetail() {
 
   return (
     <AppLayout title={customer.name} subtitle="Detalle de cliente">
-      {/* Breadcrumb + Acciones */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="breadcrumbs text-sm">
           <ul>
-            <li>
-              <Link to="/app/customers">Clientes</Link>
-            </li>
+            <li><Link to="/app/customers">Clientes</Link></li>
             <li className="font-medium">{customer.name}</li>
           </ul>
         </div>
 
         <div className="flex items-center gap-2">
-          {admin && (
+          {admin && allowWaResend && (
             <button
-              className="btn btn-error btn-sm"
-              onClick={onDelete}
+              className="btn btn-outline btn-sm"
+              onClick={onResendQr}
               disabled={working}
-              title="Eliminar cliente"
+              title="Reenviar QR por WhatsApp"
             >
-              {working ? (
-                <>
-                  <span className="loading loading-spinner loading-xs" />
-                  Eliminando…
-                </>
-              ) : (
-                "Eliminar"
-              )}
+              {working ? <span className="loading loading-spinner loading-xs" /> : "Reenviar QR"}
             </button>
           )}
-          <Link to="/app/customers" className="btn btn-ghost btn-sm">
-            ← Volver
-          </Link>
+          {admin && (
+            <button className="btn btn-error btn-sm" onClick={onDelete} disabled={working}>
+              {working ? <span className="loading loading-spinner loading-xs" /> : "Eliminar"}
+            </button>
+          )}
+          <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver</Link>
         </div>
       </div>
 
-      {/* Top: Perfil + Stats/acciones */}
       <div className="grid lg:grid-cols-2 gap-4 mb-6">
-        {/* Card: Datos del cliente */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <div className="flex items-center justify-between">
@@ -276,16 +257,12 @@ export default function CustomerDetail() {
 
             <div className="grid sm:grid-cols-2 gap-3 mt-2">
               <div>
-                <div className="label">
-                  <span className="label-text">Nombre</span>
-                </div>
+                <div className="label"><span className="label-text">Nombre</span></div>
                 <div className="font-medium">{customer.name}</div>
               </div>
 
               <div>
-                <div className="label">
-                  <span className="label-text">Teléfono</span>
-                </div>
+                <div className="label"><span className="label-text">Teléfono</span></div>
                 <div className="font-medium">{phoneDisplay}</div>
                 {!admin && (
                   <div className="text-xs opacity-60 mt-1">
@@ -295,41 +272,19 @@ export default function CustomerDetail() {
               </div>
 
               <div>
-                <div className="label">
-                  <span className="label-text">Email</span>
-                </div>
+                <div className="label"><span className="label-text">Email</span></div>
                 <div className="font-medium">{emailDisplay}</div>
               </div>
-
-              {/* Ocultamos el ID técnico del cliente */}
-              {/* <div>
-                <div className="label">
-                  <span className="label-text">ID</span>
-                </div>
-                <div className="font-mono text-xs opacity-70 break-all">{customer.id}</div>
-              </div> */}
             </div>
           </div>
         </div>
 
-        {/* Card: Puntos/Visitas + acción */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body gap-4">
             <div className="flex items-center justify-between">
               <h2 className="card-title">Puntos y visitas</h2>
-              <button
-                onClick={onAddVisit}
-                className="btn btn-primary btn-sm"
-                disabled={working}
-              >
-                {working ? (
-                  <>
-                    <span className="loading loading-spinner loading-xs" />
-                    Añadiendo…
-                  </>
-                ) : (
-                  "Añadir visita"
-                )}
+              <button onClick={onAddVisit} className="btn btn-primary btn-sm" disabled={working}>
+                {working ? <><span className="loading loading-spinner loading-xs" />Añadiendo…</> : "Añadir visita"}
               </button>
             </div>
 
@@ -350,7 +305,6 @@ export default function CustomerDetail() {
               </div>
             </div>
 
-            {/* Progreso hacia la próxima recompensa */}
             {progress && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -372,12 +326,9 @@ export default function CustomerDetail() {
               </div>
             )}
 
-            {/* Filtros visuales */}
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Filtro de recompensas</span>
-                </label>
+                <label className="label"><span className="label-text">Filtro de recompensas</span></label>
                 <select
                   className="select select-bordered"
                   value={rewardFilter}
@@ -391,9 +342,7 @@ export default function CustomerDetail() {
               </div>
 
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Buscar en visitas</span>
-                </label>
+                <label className="label"><span className="label-text">Buscar en visitas</span></label>
                 <input
                   className="input input-bordered"
                   placeholder="fecha o notas…"
@@ -457,9 +406,7 @@ export default function CustomerDetail() {
                 <tbody>
                   {filteredVisits.map((v) => (
                     <tr key={v.id}>
-                      <td className="whitespace-nowrap">
-                        {new Date(v.visitedAt).toLocaleString()}
-                      </td>
+                      <td className="whitespace-nowrap">{new Date(v.visitedAt).toLocaleString()}</td>
                       <td>{v.notes || ""}</td>
                     </tr>
                   ))}
