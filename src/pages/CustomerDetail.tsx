@@ -1,6 +1,6 @@
 // partner-web/src/pages/CustomerDetail.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, addVisit, getCustomerRewards, getCustomerVisits } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 import AppLayout from "@/layout/AppLayout";
@@ -59,6 +59,7 @@ function tagLabel(t?: Customer["tag"]) {
 
 export default function CustomerDetail() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
 
@@ -71,6 +72,7 @@ export default function CustomerDetail() {
   const [loadError, setLoadError] = useState<string>("");
 
   const [msg, setMsg] = useState<string>("");
+  const [working, setWorking] = useState(false); // añade/borra en curso
 
   // Filtros visuales
   const [rewardFilter, setRewardFilter] = useState<"" | Reward["status"]>("");
@@ -116,8 +118,16 @@ export default function CustomerDetail() {
       .catch(() => setProgress(null));
   }, [id]);
 
+  const refreshProgress = useCallback(() => {
+    api
+      .get(`/customers/${encodeURIComponent(id)}/progress`)
+      .then((res) => setProgress(res.data as Progress))
+      .catch(() => {});
+  }, [id]);
+
   const onAddVisit = async () => {
     setMsg("");
+    setWorking(true);
     try {
       const r = await addVisit(id, "Visita desde dashboard");
       const text = `Visita creada · Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
@@ -127,13 +137,29 @@ export default function CustomerDetail() {
       // refrescar (no bloquea la UI)
       getCustomerRewards(id).then(setRewards).catch(() => {});
       getCustomerVisits(id).then(setVisits).catch(() => {});
-      // refrescar progreso también
-      api
-        .get(`/customers/${encodeURIComponent(id)}/progress`)
-        .then((res) => setProgress(res.data as Progress))
-        .catch(() => {});
+      refreshProgress();
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e.message || "Error al crear visita");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!admin || !customer) return;
+    const ok = window.confirm(
+      `¿Eliminar al cliente "${customer.name}"? Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+    setWorking(true);
+    setMsg("");
+    try {
+      await api.delete(`/customers/${encodeURIComponent(customer.id)}`);
+      navigate("/app/customers");
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || e.message || "No se pudo eliminar el cliente");
+    } finally {
+      setWorking(false);
     }
   };
 
@@ -213,9 +239,29 @@ export default function CustomerDetail() {
             <li className="font-medium">{customer.name}</li>
           </ul>
         </div>
-        <Link to="/app/customers" className="btn btn-ghost btn-sm">
-          ← Volver
-        </Link>
+
+        <div className="flex items-center gap-2">
+          {admin && (
+            <button
+              className="btn btn-error btn-sm"
+              onClick={onDelete}
+              disabled={working}
+              title="Eliminar cliente"
+            >
+              {working ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  Eliminando…
+                </>
+              ) : (
+                "Eliminar"
+              )}
+            </button>
+          )}
+          <Link to="/app/customers" className="btn btn-ghost btn-sm">
+            ← Volver
+          </Link>
+        </div>
       </div>
 
       {/* Top: Perfil + Stats/acciones */}
@@ -255,7 +301,7 @@ export default function CustomerDetail() {
                 <div className="font-medium">{emailDisplay}</div>
               </div>
 
-              {/* Ocultamos el ID técnico del cliente para no “asustar” */}
+              {/* Ocultamos el ID técnico del cliente */}
               {/* <div>
                 <div className="label">
                   <span className="label-text">ID</span>
@@ -271,8 +317,19 @@ export default function CustomerDetail() {
           <div className="card-body gap-4">
             <div className="flex items-center justify-between">
               <h2 className="card-title">Puntos y visitas</h2>
-              <button onClick={onAddVisit} className="btn btn-primary btn-sm">
-                Añadir visita
+              <button
+                onClick={onAddVisit}
+                className="btn btn-primary btn-sm"
+                disabled={working}
+              >
+                {working ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs" />
+                    Añadiendo…
+                  </>
+                ) : (
+                  "Añadir visita"
+                )}
               </button>
             </div>
 
