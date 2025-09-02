@@ -18,6 +18,7 @@ export default function CustomersNew() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [created, setCreated] = useState<Created | null>(null);
+  const [showFull, setShowFull] = useState(false); // modal pantalla completa
 
   const qrUrl = created
     ? `${api.defaults.baseURL}/customers/${encodeURIComponent(created.id)}/qr.png`
@@ -167,6 +168,13 @@ export default function CustomersNew() {
                     Imprimir
                   </button>
                   <button
+                    type="button"
+                    className="btn btn-outline join-item"
+                    onClick={() => setShowFull(true)}
+                  >
+                    Pantalla completa
+                  </button>
+                  <button
                     className="btn btn-primary join-item"
                     onClick={() => navigate(`/app/customers/${created.id}`)}
                   >
@@ -182,6 +190,31 @@ export default function CustomersNew() {
           </div>
         </div>
       </div>
+
+      {/* Modal de pantalla completa para facilitar la foto del QR */}
+      {showFull && created && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-none w-[92vw] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">QR de {created.name}</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowFull(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="flex items-center justify-center">
+              <img
+                src={`${qrUrl}?cb=${Date.now()}`} // cache-bust
+                alt="QR del cliente"
+                className="w-[70vmin] h-[70vmin] object-contain"
+              />
+            </div>
+            <div className="mt-3 text-center text-sm opacity-70">
+              Pídele al cliente que haga una foto a este código.
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowFull(false)} />
+        </div>
+      )}
     </AppLayout>
   );
 }
