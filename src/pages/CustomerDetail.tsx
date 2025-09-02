@@ -30,18 +30,26 @@ function maskEmail(e?: string | null) {
   const uu = u.slice(0, 2) + "•".repeat(Math.max(0, u.length - 2));
   return `${uu}@${d}`;
 }
-function rewardClass(s: Reward["status"]) {
+
+function niceRewardName(r: Reward) {
+  const raw = r.note || r.kind || "";
+  if (/auto-?issued by visits threshold/i.test(raw)) return "Recompensa por visitas";
+  return raw || "Recompensa";
+}
+
+function rewardBadge(s: Reward["status"]) {
   switch (s) {
     case "PENDING":
-      return "badge badge-warning";
+      return <span className="badge badge-warning">Pendiente</span>;
     case "REDEEMED":
-      return "badge badge-success";
+      return <span className="badge badge-success">Canjeada</span>;
     case "EXPIRED":
-      return "badge badge-ghost";
+      return <span className="badge badge-ghost">Expirada</span>;
     default:
-      return "badge";
+      return <span className="badge">—</span>;
   }
 }
+
 function tagLabel(t?: Customer["tag"]) {
   return t ?? "NONE";
 }
@@ -229,12 +237,13 @@ export default function CustomerDetail() {
                 <div className="font-medium">{emailDisplay}</div>
               </div>
 
-              <div>
+              {/* Ocultamos el ID técnico del cliente para no “asustar” */}
+              {/* <div>
                 <div className="label">
                   <span className="label-text">ID</span>
                 </div>
                 <div className="font-mono text-xs opacity-70 break-all">{customer.id}</div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
@@ -303,28 +312,27 @@ export default function CustomerDetail() {
       {/* Recompensas */}
       <div className="card bg-base-100 shadow-sm mb-6">
         <div className="card-body">
-          <h3 className="card-title">Recompensas</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="card-title">Recompensas</h3>
+            <span className="badge badge-outline">Visitas totales: {totalVisits}</span>
+          </div>
+
           {filteredRewards.length ? (
             <div className="overflow-x-auto rounded-box border border-base-300">
               <table className="table table-zebra table-compact w-full">
                 <thead className="bg-base-200 sticky top-0 z-10">
                   <tr>
-                    <th>ID / Nota</th>
+                    <th>Recompensa</th>
                     <th>Estado</th>
-                    <th>Tipo</th>
+                    <th className="hidden sm:table-cell">Tipo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRewards.map((r) => (
                     <tr key={r.id}>
-                      <td className="align-top">
-                        <div className="font-medium">{r.note || r.kind || "—"}</div>
-                        <div className="text-xs opacity-60 font-mono break-all">{r.id}</div>
-                      </td>
-                      <td className="align-top">
-                        <span className={rewardClass(r.status)}>{r.status}</span>
-                      </td>
-                      <td className="align-top">{r.kind || "—"}</td>
+                      <td className="align-top font-medium">{niceRewardName(r)}</td>
+                      <td className="align-top">{rewardBadge(r.status)}</td>
+                      <td className="align-top hidden sm:table-cell">{r.kind || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
