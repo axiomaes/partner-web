@@ -221,3 +221,13 @@ export async function addVisitFromQrPayload(payload: string) {
   }
   return addVisit(parsed.customerId, "Visita por QR");
 }
+
+// Sumar visita por teléfono (crea cliente si no existe)
+export function addVisitByPhone(phone: string, notes?: string) {
+  return api.post('/customers/visits/by-phone', { phone, notes }).then(r => r.data);
+}
+
+// Reenviar QR por WhatsApp (sólo ADMIN)
+export function resendCustomerQr(customerId: string) {
+  return api.post(`/customers/${encodeURIComponent(customerId)}/qr/resend`).then(r => r.data);
+}
