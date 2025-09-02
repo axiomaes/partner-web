@@ -21,6 +21,9 @@ type Reward = {
   kind?: string | null;
 };
 
+/** Progreso hacia la próxima recompensa (desde API /customers/:id/progress) */
+type Progress = { count: number; target: number; toNextReward: number; pending: boolean };
+
 function maskPhone(p?: string | null) {
   return p ? p.replace(/.(?=.{4})/g, "•") : "—";
 }
@@ -62,6 +65,7 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
+  const [progress, setProgress] = useState<Progress | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>("");
@@ -103,6 +107,15 @@ export default function CustomerDetail() {
     fetchAll();
   }, [id, fetchAll]);
 
+  // Cargar progreso desde la API limpia
+  useEffect(() => {
+    if (!id) return;
+    api
+      .get(`/customers/${encodeURIComponent(id)}/progress`)
+      .then((r) => setProgress(r.data as Progress))
+      .catch(() => setProgress(null));
+  }, [id]);
+
   const onAddVisit = async () => {
     setMsg("");
     try {
@@ -114,6 +127,11 @@ export default function CustomerDetail() {
       // refrescar (no bloquea la UI)
       getCustomerRewards(id).then(setRewards).catch(() => {});
       getCustomerVisits(id).then(setVisits).catch(() => {});
+      // refrescar progreso también
+      api
+        .get(`/customers/${encodeURIComponent(id)}/progress`)
+        .then((res) => setProgress(res.data as Progress))
+        .catch(() => {});
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e.message || "Error al crear visita");
     }
@@ -274,6 +292,28 @@ export default function CustomerDetail() {
                 <div className="stat-value">{rewards.length}</div>
               </div>
             </div>
+
+            {/* Progreso hacia la próxima recompensa */}
+            {progress && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Progreso hacia la próxima recompensa</span>
+                  <span className="text-sm tabular-nums">
+                    {(progress.count % progress.target)}/{progress.target} visitas
+                  </span>
+                </div>
+                <progress
+                  className="progress progress-primary w-full"
+                  value={((progress.count % progress.target) / progress.target) * 100}
+                  max={100}
+                />
+                {progress.pending && (
+                  <div className="alert alert-success py-2">
+                    <span>Tienes una recompensa pendiente de canje.</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Filtros visuales */}
             <div className="grid sm:grid-cols-2 gap-3">
