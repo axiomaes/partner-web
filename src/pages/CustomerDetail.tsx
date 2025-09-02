@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, addVisit, getCustomerRewards, getCustomerVisits } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
+import AppLayout from "@/layout/AppLayout";
 
 type Customer = {
   id: string;
@@ -60,8 +61,7 @@ export default function CustomerDetail() {
   const [msg, setMsg] = useState<string>("");
 
   // Filtros visuales
-  const [rewardFilter, setRewardFilter] =
-    useState<"" | Reward["status"]>("");
+  const [rewardFilter, setRewardFilter] = useState<"" | Reward["status"]>("");
   const [queryVisit, setQueryVisit] = useState<string>("");
 
   const fetchAll = useCallback(async () => {
@@ -69,7 +69,7 @@ export default function CustomerDetail() {
     setLoadError("");
     try {
       const [c, rw, vs] = await Promise.all([
-        api.get(`/customers/${encodeURIComponent(id)}`).then(r => r.data as Customer),
+        api.get(`/customers/${encodeURIComponent(id)}`).then((r) => r.data as Customer),
         getCustomerRewards(id).catch(() => [] as Reward[]),
         getCustomerVisits(id).catch(() => [] as Visit[]),
       ]);
@@ -128,58 +128,72 @@ export default function CustomerDetail() {
     });
   }, [visits, queryVisit]);
 
-  // ===== Estados de carga / error =====
+  // ===== Estados de carga / error con layout unificado =====
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <span className="loading loading-spinner" />
-          <span>Cargando cliente…</span>
+      <AppLayout title="Cliente" subtitle="Cargando detalle…">
+        <div className="p-6">
+          <div className="flex items-center gap-3">
+            <span className="loading loading-spinner" />
+            <span>Cargando cliente…</span>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (loadError || !customer) {
     return (
-      <div className="max-w-4xl mx-auto p-6 space-y-4">
-        <div className="breadcrumbs text-sm">
-          <ul>
-            <li><Link to="/app">Clientes</Link></li>
-            <li className="font-medium">Detalle</li>
-          </ul>
+      <AppLayout title="Cliente" subtitle="Detalle no disponible">
+        <div className="flex items-center justify-between mb-4">
+          <div className="breadcrumbs text-sm">
+            <ul>
+              <li>
+                <Link to="/app/customers">Clientes</Link>
+              </li>
+              <li className="font-medium">Detalle</li>
+            </ul>
+          </div>
+          <Link to="/app/customers" className="btn btn-ghost btn-sm">
+            ← Volver
+          </Link>
         </div>
 
-        <div className="alert alert-warning">
+        <div className="alert alert-warning mb-4">
           <span>{loadError || "No se encontró el cliente."}</span>
         </div>
 
         <div className="flex items-center gap-2">
-          <Link to="/app" className="btn btn-ghost">← Volver</Link>
-          <button onClick={fetchAll} className="btn btn-primary">Reintentar</button>
+          <button onClick={fetchAll} className="btn btn-primary">
+            Reintentar
+          </button>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
-  const phoneDisplay = admin ? (customer.phone || "—") : maskPhone(customer.phone);
-  const emailDisplay = admin ? (customer.email || "—") : maskEmail(customer.email);
+  const phoneDisplay = admin ? customer.phone || "—" : maskPhone(customer.phone);
+  const emailDisplay = admin ? customer.email || "—" : maskEmail(customer.email);
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+    <AppLayout title={customer.name} subtitle="Detalle de cliente">
       {/* Breadcrumb + Acciones */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div className="breadcrumbs text-sm">
           <ul>
-            <li><Link to="/app">Clientes</Link></li>
+            <li>
+              <Link to="/app/customers">Clientes</Link>
+            </li>
             <li className="font-medium">{customer.name}</li>
           </ul>
         </div>
-        <Link to="/app" className="btn btn-ghost btn-sm">← Volver</Link>
+        <Link to="/app/customers" className="btn btn-ghost btn-sm">
+          ← Volver
+        </Link>
       </div>
 
       {/* Top: Perfil + Stats/acciones */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid lg:grid-cols-2 gap-4 mb-6">
         {/* Card: Datos del cliente */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
@@ -287,13 +301,13 @@ export default function CustomerDetail() {
       </div>
 
       {/* Recompensas */}
-      <div className="card bg-base-100 shadow-sm">
+      <div className="card bg-base-100 shadow-sm mb-6">
         <div className="card-body">
           <h3 className="card-title">Recompensas</h3>
           {filteredRewards.length ? (
-            <div className="overflow-x-auto">
-              <table className="table">
-                <thead>
+            <div className="overflow-x-auto rounded-box border border-base-300">
+              <table className="table table-zebra table-compact w-full">
+                <thead className="bg-base-200 sticky top-0 z-10">
                   <tr>
                     <th>ID / Nota</th>
                     <th>Estado</th>
@@ -327,9 +341,9 @@ export default function CustomerDetail() {
         <div className="card-body">
           <h3 className="card-title">Visitas</h3>
           {filteredVisits.length ? (
-            <div className="overflow-x-auto">
-              <table className="table">
-                <thead>
+            <div className="overflow-x-auto rounded-box border border-base-300">
+              <table className="table table-zebra table-compact w-full">
+                <thead className="bg-base-200 sticky top-0 z-10">
                   <tr>
                     <th>Fecha</th>
                     <th>Notas</th>
@@ -352,6 +366,6 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
