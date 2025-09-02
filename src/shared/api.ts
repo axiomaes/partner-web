@@ -159,3 +159,65 @@ export async function getMyRewards() {
   return [];
 }
 
+// ======== STAFF HELPERS (check-in) ========
+
+export type CustomerLite = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  businessId?: string;
+};
+
+type LookupInput = { phone?: string; email?: string };
+
+/**
+ * Busca un cliente por teléfono o email.
+ * Preferido: endpoint dedicado POST /customers/lookup
+ * Fallback: filtrar en memoria desde /customers (si el backend aún no tiene lookup).
+ */
+export async function lookupCustomer(input: LookupInput): Promise<CustomerLite | null> {
+  const body: LookupInput = {};
+  if (input.phone) body.phone = input.phone.trim();
+  if (input.email) body.email = input.email.trim();
+
+  // 1) Intento con endpoint dedicado
+  try {
+    const r = await api.post("/customers/lookup", body, { validateStatus: () => true });
+    if (r.status >= 200 && r.status < 300 && r.data && r.data.id) return r.data as CustomerLite;
+  } catch (_) {
+    // continúa al fallback
+  }
+
+  // 2) Fallback: traer lista y filtrar (no ideal, pero funciona en dev)
+  try {
+    const list = await listCustomers();
+    const phoneNorm = (body.phone || "").replace(/\D/g, "");
+    const emailNorm = (body.email || "").toLowerCase();
+    const found = (list as any[]).find((c) => {
+      const cPhone = String(c.phone || "").replace(/\D/g, "");
+      const cEmail = String(c.email || "").toLowerCase();
+      return (phoneNorm && cPhone.endsWith(phoneNorm)) || (emailNorm && cEmail === emailNorm);
+    });
+    return found || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Acredita una visita por QR payload.
+ * El payload viene del componente CustomerQR: { t:'axioma-visit', customerId, businessId }
+ */
+export async function addVisitFromQrPayload(payload: string) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error("QR inválido: no es JSON.");
+  }
+  if (!parsed || parsed.t !== "axioma-visit" || !parsed.customerId) {
+    throw new Error("QR inválido: formato no reconocido.");
+  }
+  return addVisit(parsed.customerId, "Visita por QR");
+}
