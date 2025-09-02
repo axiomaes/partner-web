@@ -2,7 +2,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+  useParams,
+} from "react-router-dom";
 
 import AppLayout from "@/layout/AppLayout";
 
@@ -21,6 +26,18 @@ import CustomerDetail from "@/pages/CustomerDetail";
 import "./index.css";
 
 const qc = new QueryClient();
+
+/** ===== Wrappers para redirecciones legacy con params dinámicos ===== */
+function LegacyCustomerToApp() {
+  const { id } = useParams();
+  return <Navigate to={`/app/customers/${id}`} replace />;
+}
+function LegacyCustomersNewToApp() {
+  return <Navigate to="/app/customers/new" replace />;
+}
+function LegacyStaffNewToApp() {
+  return <Navigate to="/app/staff/new" replace />;
+}
 
 const router = createBrowserRouter([
   // HOME bonito en "/"
@@ -46,9 +63,9 @@ const router = createBrowserRouter([
   },
 
   // Redirecciones antiguas (por si quedaron marcadores)
-  { path: "/customers/:id", element: <Navigate to="/app/customers/:id" replace /> },
-  { path: "/customers/new", element: <Navigate to="/app/customers/new" replace /> },
-  { path: "/staff/new", element: <Navigate to="/app/staff/new" replace /> },
+  { path: "/customers/new", element: <LegacyCustomersNewToApp /> },
+  { path: "/customers/:id", element: <LegacyCustomerToApp /> },
+  { path: "/staff/new", element: <LegacyStaffNewToApp /> },
 
   // Fallback 404 básico: vuelve al Home
   { path: "*", element: <Navigate to="/" replace /> },
