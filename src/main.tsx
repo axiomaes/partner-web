@@ -9,15 +9,13 @@ import {
   useParams,
 } from "react-router-dom";
 
-import AppLayout from "@/layout/AppLayout";
-
 // Público (sin sidebar)
 import Home from "@/pages/Home";
 import PortalLogin from "@/portal/PortalLogin";
 import PortalPoints from "@/portal/PortalPoints";
 import StaffCheckin from "@/pages/StaffCheckin";
 
-// Panel (con sidebar)
+// Panel (con sidebar + layout unificado)
 import CustomersPage from "@/pages/Customers";
 import CustomersNew from "@/pages/CustomersNew";
 import StaffNew from "@/pages/StaffNew";
@@ -50,12 +48,12 @@ const router = createBrowserRouter([
   // Check-in Staff (público con validación propia de sesión en la vista)
   { path: "/staff/checkin", element: <StaffCheckin /> },
 
-  // Dashboard interno con sidebar en /app/*
+  // Dashboard interno en /app/*
   {
     path: "/app",
-    element: <AppLayout />,
     children: [
       { index: true, element: <CustomersPage /> },
+      { path: "customers", element: <CustomersPage /> },
       { path: "customers/new", element: <CustomersNew /> },
       { path: "customers/:id", element: <CustomerDetail /> },
       { path: "staff/new", element: <StaffNew /> },
