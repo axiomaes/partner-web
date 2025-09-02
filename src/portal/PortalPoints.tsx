@@ -1,16 +1,21 @@
 // partner-web/src/portal/PortalPoints.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import QRCode from "qrcode.react";
 import {
   loadPortalSession,
   clearPortalSession,
   getMyRewards,
   getMyVisits,
 } from "@/shared/api";
+import CustomerQR from "@/components/CustomerQR";
 
 type Visit = { id: string; visitedAt: string; notes?: string | null };
-type Reward = { id: string; status: "PENDING" | "REDEEMED" | "EXPIRED"; note?: string | null; kind?: string | null };
+type Reward = {
+  id: string;
+  status: "PENDING" | "REDEEMED" | "EXPIRED";
+  note?: string | null;
+  kind?: string | null;
+};
 
 export default function PortalPoints() {
   const nav = useNavigate();
@@ -27,10 +32,7 @@ export default function PortalPoints() {
     }
     (async () => {
       try {
-        const [v, r] = await Promise.all([
-          getMyVisits(),
-          getMyRewards(),
-        ]);
+        const [v, r] = await Promise.all([getMyVisits(), getMyRewards()]);
         setVisits(v);
         setRewards(r);
       } finally {
@@ -41,17 +43,9 @@ export default function PortalPoints() {
 
   const totalVisits = visits.length;
   const pendingRewards = useMemo(
-    () => rewards.filter(r => r.status === "PENDING").length,
+    () => rewards.filter((r) => r.status === "PENDING").length,
     [rewards]
   );
-
-  // Contenido que codificamos en el QR para acreditar la visita:
-  // usa un formato simple y estable. El backend podrá leerlo.
-  const qrPayload = JSON.stringify({
-    t: "axioma-visit",
-    customerId: session?.customerId,
-    businessId: session?.businessId,
-  });
 
   const logout = () => {
     clearPortalSession();
@@ -65,25 +59,21 @@ export default function PortalPoints() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-semibold">Mis puntos</h1>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Salir</button>
+          <button className="btn btn-ghost btn-sm" onClick={logout}>
+            Salir
+          </button>
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          {/* QR */}
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body items-center text-center">
-              <h2 className="card-title">Mi QR</h2>
-              <p className="text-sm opacity-70">
-                Muestra este código al personal para acreditar tu visita.
-              </p>
-              <div className="p-4 bg-white rounded-2xl">
-                <QRCode value={qrPayload} size={192} includeMargin />
-              </div>
-              <div className="text-xs opacity-60 font-mono break-all">
-                {session.customerId}
-              </div>
-            </div>
-          </div>
+          {/* QR (componente reusable) */}
+          <CustomerQR
+            className="md:row-span-1"
+            customerId={session.customerId!}
+            businessId={session.businessId}
+            title="Mi QR"
+            helperText="Muestra este código al personal para acreditar tu visita."
+            size={192}
+          />
 
           {/* Resumen */}
           <div className="card bg-base-100 shadow-sm">
@@ -120,9 +110,10 @@ export default function PortalPoints() {
                 </div>
               ) : visits.length ? (
                 <ul className="text-sm list-disc ml-5">
-                  {visits.map(v => (
+                  {visits.map((v) => (
                     <li key={v.id}>
-                      {new Date(v.visitedAt).toLocaleString()} {v.notes ? `— ${v.notes}` : ""}
+                      {new Date(v.visitedAt).toLocaleString()}{" "}
+                      {v.notes ? `— ${v.notes}` : ""}
                     </li>
                   ))}
                 </ul>
@@ -141,7 +132,7 @@ export default function PortalPoints() {
                 </div>
               ) : rewards.length ? (
                 <ul className="text-sm list-disc ml-5">
-                  {rewards.map(r => (
+                  {rewards.map((r) => (
                     <li key={r.id}>
                       {r.status} — {r.note || r.kind || r.id}
                     </li>
@@ -153,7 +144,6 @@ export default function PortalPoints() {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
