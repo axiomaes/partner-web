@@ -1,64 +1,160 @@
-import { useEffect, useState } from "react";
-import { customerMe, customerRewards, customerVisits, loadCustomerToken, clearCustomerToken } from "./customerApi";
+// partner-web/src/portal/PortalPoints.tsx
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import QRCode from "qrcode.react";
+import {
+  loadPortalSession,
+  clearPortalSession,
+  getMyRewards,
+  getMyVisits,
+} from "@/shared/api";
+
+type Visit = { id: string; visitedAt: string; notes?: string | null };
+type Reward = { id: string; status: "PENDING" | "REDEEMED" | "EXPIRED"; note?: string | null; kind?: string | null };
 
 export default function PortalPoints() {
   const nav = useNavigate();
-  const [me, setMe] = useState<{id:string;name:string;phone?:string;email?:string} | null>(null);
-  const [rewards, setRewards] = useState<any[]>([]);
-  const [visits, setVisits] = useState<any[] | null>(null);
+  const session = loadPortalSession();
+
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!loadCustomerToken()) { nav("/portal"); return; }
+    if (!session?.token) {
+      nav("/portal", { replace: true });
+      return;
+    }
     (async () => {
-      const m = await customerMe();
-      setMe(m);
-      try { setRewards(await customerRewards(m.id)); } catch { setRewards([]); }
-      try { setVisits(await customerVisits(m.id)); } catch { setVisits(null); }
-    })().catch(()=>{});
-  }, [nav]);
+      try {
+        const [v, r] = await Promise.all([
+          getMyVisits(),
+          getMyRewards(),
+        ]);
+        setVisits(v);
+        setRewards(r);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const totalVisits = visits.length;
+  const pendingRewards = useMemo(
+    () => rewards.filter(r => r.status === "PENDING").length,
+    [rewards]
+  );
+
+  // Contenido que codificamos en el QR para acreditar la visita:
+  // usa un formato simple y estable. El backend podrá leerlo.
+  const qrPayload = JSON.stringify({
+    t: "axioma-visit",
+    customerId: session?.customerId,
+    businessId: session?.businessId,
+  });
 
   const logout = () => {
-    clearCustomerToken();
-    nav("/portal");
+    clearPortalSession();
+    nav("/portal", { replace: true });
   };
 
-  if (!me) return <div>Cargando…</div>;
+  if (!session?.token) return null;
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Hola, {me.name}</h1>
-        <button className="text-sm underline" onClick={logout}>Salir</button>
+    <div className="min-h-screen bg-base-200 p-4">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-xl font-semibold">Mis puntos</h1>
+          <button className="btn btn-ghost btn-sm" onClick={logout}>Salir</button>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* QR */}
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body items-center text-center">
+              <h2 className="card-title">Mi QR</h2>
+              <p className="text-sm opacity-70">
+                Muestra este código al personal para acreditar tu visita.
+              </p>
+              <div className="p-4 bg-white rounded-2xl">
+                <QRCode value={qrPayload} size={192} includeMargin />
+              </div>
+              <div className="text-xs opacity-60 font-mono break-all">
+                {session.customerId}
+              </div>
+            </div>
+          </div>
+
+          {/* Resumen */}
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body">
+              <h2 className="card-title">Resumen</h2>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <span className="loading loading-spinner" /> Cargando…
+                </div>
+              ) : (
+                <div className="stats shadow-sm">
+                  <div className="stat">
+                    <div className="stat-title">Visitas</div>
+                    <div className="stat-value text-primary">{totalVisits}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-title">Recompensas pendientes</div>
+                    <div className="stat-value">{pendingRewards}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Listas */}
+        <div className="grid md:grid-cols-2 gap-4 mt-4">
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body">
+              <h3 className="card-title">Mis visitas</h3>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <span className="loading loading-spinner" /> Cargando…
+                </div>
+              ) : visits.length ? (
+                <ul className="text-sm list-disc ml-5">
+                  {visits.map(v => (
+                    <li key={v.id}>
+                      {new Date(v.visitedAt).toLocaleString()} {v.notes ? `— ${v.notes}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-sm opacity-70">Aún no tienes visitas.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body">
+              <h3 className="card-title">Mis recompensas</h3>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <span className="loading loading-spinner" /> Cargando…
+                </div>
+              ) : rewards.length ? (
+                <ul className="text-sm list-disc ml-5">
+                  {rewards.map(r => (
+                    <li key={r.id}>
+                      {r.status} — {r.note || r.kind || r.id}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-sm opacity-70">Aún no tienes recompensas.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
-
-      <div className="mt-4 grid sm:grid-cols-2 gap-3">
-        <div className="p-3 border rounded">
-          <div className="text-sm text-gray-500">Tus datos</div>
-          <div className="mt-1 text-sm">Móvil: {me.phone || "—"}</div>
-          <div className="text-sm">Email: {me.email || "—"}</div>
-        </div>
-
-        <div className="p-3 border rounded">
-          <div className="text-sm text-gray-500">Recompensas</div>
-          <ul className="list-disc ml-5 text-sm mt-1">
-            {rewards.length ? rewards.map(r => (
-              <li key={r.id}>{r.status} — {r.note || r.kind || r.id}</li>
-            )) : <li>Sin recompensas</li>}
-          </ul>
-        </div>
-      </div>
-
-      {visits && (
-        <div className="p-3 border rounded mt-3">
-          <div className="text-sm text-gray-500">Últimas visitas</div>
-          <ul className="list-disc ml-5 text-sm mt-1">
-            {visits.slice(0,10).map(v => (
-              <li key={v.id}>{new Date(v.visitedAt).toLocaleString()} — {v.notes || ""}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
