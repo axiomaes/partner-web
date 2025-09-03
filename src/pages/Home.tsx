@@ -38,7 +38,11 @@ export default function Home() {
       <div className="md:hidden fixed top-0 inset-x-0 z-40">
         <div className="navbar bg-base-100 border-b">
           <div className="flex-1">
-            <button className="btn btn-ghost btn-square" onClick={() => setOpen(true)} aria-label="Abrir menú">
+            <button
+              className="btn btn-ghost btn-square"
+              onClick={() => setOpen(true)}
+              aria-label="Abrir menú"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
             </button>
             <Link to="/" className="btn btn-ghost text-lg normal-case gap-2">
@@ -85,10 +89,16 @@ export default function Home() {
                   <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
                   <h1 className="text-3xl font-bold">{BRAND.name}</h1>
                 </div>
-                <p className="opacity-90 mt-2">Agenda, fidelización y mensajería en un mismo lugar.</p>
+                <p className="opacity-90 mt-2">
+                  Agenda, fidelización y mensajería en un mismo lugar.
+                </p>
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button type="button" onClick={() => nav("/portal")} className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg">
+                  <button
+                    type="button"
+                    onClick={() => nav("/portal")}
+                    className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
+                  >
                     Acceso Clientes
                   </button>
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
@@ -128,11 +138,24 @@ export default function Home() {
             </div>
           </section>
 
-          <footer className="text-center text-xs opacity-70 py-8 space-x-2">
-            © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}
-            <a className="link" href="/legal/privacidad">Privacidad</a>·
-            <a className="link" href="/legal/aviso">Aviso legal</a>·
-            <a className="link" href="/legal/cookies">Cookies</a>
+          {/* Footer propio de Home */}
+          <footer className="mt-8 border-t border-base-300 pt-6">
+            <div className="text-sm text-base-content/70 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              <span>© {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}</span>
+              <nav className="flex items-center gap-x-4">
+                <Link to="/legal/privacidad" className="link link-primary link-hover">
+                  Privacidad
+                </Link>
+                <span className="text-base-content/40">·</span>
+                <Link to="/legal/aviso-legal" className="link link-primary link-hover">
+                  Aviso legal
+                </Link>
+                <span className="text-base-content/40">·</span>
+                <Link to="/legal/cookies" className="link link-primary link-hover">
+                  Cookies
+                </Link>
+              </nav>
+            </div>
           </footer>
         </div>
       </main>
