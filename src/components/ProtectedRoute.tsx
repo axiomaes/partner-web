@@ -1,47 +1,72 @@
 // partner-web/src/components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getMe } from "@/shared/api";
 
 type Props = {
-  roles?: string[];
+  roles?: string[];        // roles permitidos (opcional)
   children: ReactNode;
 };
 
+/** Intenta obtener el rol del usuario desde storage o desde un JWT */
+function getStoredRole(): string | undefined {
+  // 1) Buscar un objeto usuario serializado
+  const userKeys = ["axioma:user", "axioma:me", "me", "user", "currentUser"];
+  for (const k of userKeys) {
+    const raw = localStorage.getItem(k) || sessionStorage.getItem(k);
+    if (raw) {
+      try {
+        const u = JSON.parse(raw);
+        return u?.role ?? u?.userRole ?? u?.data?.role;
+      } catch {
+        // ignorar JSON inválido
+      }
+    }
+  }
+
+  // 2) Buscar un token JWT y leer el payload
+  const tokenKeys = ["token", "access_token", "accessToken", "jwt", "idToken"];
+  for (const k of tokenKeys) {
+    const tok = localStorage.getItem(k) || sessionStorage.getItem(k);
+    if (tok && tok.split(".").length === 3) {
+      try {
+        const [, payload] = tok.split(".");
+        // compatibilidad con base64url
+        const json = JSON.parse(
+          atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+        );
+        return (
+          json?.role ??
+          json?.userRole ??
+          json?.["https://axioma/role"] // por si usas un namespace en el claim
+        );
+      } catch {
+        // token no decodificable
+      }
+    }
+  }
+
+  return undefined;
+}
+
 export default function ProtectedRoute({ roles, children }: Props) {
-  const loc = useLocation();
+  const location = useLocation();
+  const role = getStoredRole();
 
-  // Si no hay token, ni consultes la API
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-  const { data: me, isLoading } = useQuery({
-    queryKey: ["me"],
-    queryFn: getMe,
-    enabled: !!token, // solo consulta si hay token
-    retry: false,
-  });
-
-  // 1) Resolviendo -> no renderices nada (evita parpadeo)
-  if (isLoading) {
+  // Si no hay sesión -> al login (sin parpadeos)
+  if (!role) {
     return (
-      <div className="min-h-screen grid place-items-center bg-base-200">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname || "/app" }}
+      />
     );
   }
 
-  // 2) Sin token o sin usuario -> a login con next
-  if (!token || !me) {
-    const next = encodeURIComponent(loc.pathname + loc.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
-  }
-
-  // 3) Rol no permitido
-  if (roles && me.role && !roles.includes(me.role)) {
+  // Si hay sesión pero rol no autorizado -> a /unauthorized
+  if (roles && !roles.includes(role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
-  // 4) OK
   return <>{children}</>;
 }
