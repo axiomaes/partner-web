@@ -1,70 +1,38 @@
-// partner-web/src/components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
-import { ReactNode } from "react";
+import { ReactNode, useMemo } from "react";
 
 type Props = {
-  roles?: string[];        // roles permitidos (opcional)
+  roles?: Array<"ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN">;
   children: ReactNode;
 };
 
-/** Intenta obtener el rol del usuario desde storage o desde un JWT */
-function getStoredRole(): string | undefined {
-  // 1) Buscar un objeto usuario serializado
-  const userKeys = ["axioma:user", "axioma:me", "me", "user", "currentUser"];
-  for (const k of userKeys) {
-    const raw = localStorage.getItem(k) || sessionStorage.getItem(k);
-    if (raw) {
-      try {
-        const u = JSON.parse(raw);
-        return u?.role ?? u?.userRole ?? u?.data?.role;
-      } catch {
-        // ignorar JSON inválido
-      }
-    }
-  }
+type Session = {
+  email: string;
+  role: "ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN";
+  // puedes añadir más campos si los usas luego
+};
 
-  // 2) Buscar un token JWT y leer el payload
-  const tokenKeys = ["token", "access_token", "accessToken", "jwt", "idToken"];
-  for (const k of tokenKeys) {
-    const tok = localStorage.getItem(k) || sessionStorage.getItem(k);
-    if (tok && tok.split(".").length === 3) {
-      try {
-        const [, payload] = tok.split(".");
-        // compatibilidad con base64url
-        const json = JSON.parse(
-          atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
-        );
-        return (
-          json?.role ??
-          json?.userRole ??
-          json?.["https://axioma/role"] // por si usas un namespace en el claim
-        );
-      } catch {
-        // token no decodificable
-      }
-    }
-  }
-
-  return undefined;
-}
+const SESSION_KEY = "axioma.session";
 
 export default function ProtectedRoute({ roles, children }: Props) {
-  const location = useLocation();
-  const role = getStoredRole();
+  const { pathname } = useLocation();
 
-  // Si no hay sesión -> al login (sin parpadeos)
-  if (!role) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: location.pathname || "/app" }}
-      />
-    );
+  const session: Session | null = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      return raw ? (JSON.parse(raw) as Session) : null;
+    } catch {
+      return null;
+    }
+  }, [pathname]);
+
+  // si no hay sesión -> al login
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: pathname }} />;
   }
 
-  // Si hay sesión pero rol no autorizado -> a /unauthorized
-  if (roles && !roles.includes(role)) {
+  // si hay restricción de roles y no coincide -> unauthorized
+  if (roles && !roles.includes(session.role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
