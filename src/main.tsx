@@ -23,6 +23,7 @@ import CustomersPage from "@/pages/Customers";
 import CustomersNew from "@/pages/CustomersNew";
 import CustomerDetail from "@/pages/CustomerDetail";
 import StaffNew from "@/pages/StaffNew";
+import AdminPanel from "@/pages/AdminPanel"; // 👈 NUEVO
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -60,12 +61,22 @@ const router = createBrowserRouter([
   // Panel interno en /app/*
   {
     path: "/app",
-    element: <Outlet />, // 👈 NECESARIO para que rendericen los hijos (y el index)
+    element: <Outlet />, // necesario para renderizar children
     children: [
-      // Index → redirige a /app/customers
-      { index: true, element: <Navigate to="customers" replace /> },
+      // 👉 Por defecto, enviar al Admin Panel
+      { index: true, element: <Navigate to="admin" replace /> },
 
-      // Clientes
+      // Admin Panel (solo ADMIN)
+      {
+        path: "admin",
+        element: (
+          <ProtectedRoute roles={["ADMIN"]}>
+            <AdminPanel />
+          </ProtectedRoute>
+        ),
+      },
+
+      // Clientes (ADMIN y BARBER)
       {
         path: "customers",
         element: (
@@ -91,7 +102,7 @@ const router = createBrowserRouter([
         ),
       },
 
-      // Staff
+      // Staff (solo ADMIN)
       {
         path: "staff/new",
         element: (
@@ -100,6 +111,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      // Versión con layout interno (si necesitas)
       {
         path: "staff/checkin",
         element: (
@@ -132,7 +144,7 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={qc}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   </React.StrictMode>
