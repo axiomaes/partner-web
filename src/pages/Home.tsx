@@ -1,10 +1,11 @@
 // partner-web/src/pages/Home.tsx
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 export default function Home() {
   const [open, setOpen] = useState(false); // drawer móvil
   const { pathname } = useLocation();
+  const nav = useNavigate();
   useEffect(() => setOpen(false), [pathname]);
 
   return (
@@ -16,9 +17,9 @@ export default function Home() {
 
           <p className="menu-title">Accesos</p>
           <ul className="menu rounded-box">
-            <li><Link to="/customer-auth" className="justify-start">Acceso Clientes</Link></li>
-            <li><Link to="/dashboard" className="justify-start">Acceso Staff</Link></li>
-            <li><Link to="/admin" className="justify-start">Administrador</Link></li>
+            <li><Link to="/portal" className="justify-start">Acceso Clientes</Link></li>
+            <li><Link to="/app" className="justify-start">Acceso Staff</Link></li>
+            <li><Link to="/login" className="justify-start">Administrador</Link></li>
           </ul>
 
           <p className="menu-title mt-4">Información</p>
@@ -52,9 +53,9 @@ export default function Home() {
 
             <p className="menu-title">Accesos</p>
             <ul className="menu rounded-box mb-2">
-              <li><Link to="/customer-auth" onClick={() => setOpen(false)}>Acceso Clientes</Link></li>
-              <li><Link to="/dashboard" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
-              <li><Link to="/admin" onClick={() => setOpen(false)}>Administrador</Link></li>
+              <li><Link to="/portal" onClick={() => setOpen(false)}>Acceso Clientes</Link></li>
+              <li><Link to="/app" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
+              <li><Link to="/login" onClick={() => setOpen(false)}>Administrador</Link></li>
             </ul>
 
             <p className="menu-title">Información</p>
@@ -83,30 +84,31 @@ export default function Home() {
 
                 {/* Grid: 1 grande (Clientes) + 2 pequeños (Staff/Admin) */}
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Grande: Clientes */}
-                  <Link
-                    to="/customer-auth"
+                  {/* Grande: Clientes — navegación programática para evitar interferencias de layout */}
+                  <button
+                    type="button"
+                    onClick={() => nav("/portal")}
                     className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
                   >
                     Acceso Clientes
-                  </Link>
+                  </button>
 
-                  {/* Pequeños: Staff / Admin */}
+                  {/* Pequeños: Staff / Admin (dejamos Link; los veremos después) */}
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
-                    <Link to="/dashboard" className="btn btn-outline h-20">Staff</Link>
-                    <Link to="/admin" className="btn btn-outline h-20">Administrador</Link>
+                    <Link to="/app" className="btn btn-outline h-20">Staff</Link>
+                    <Link to="/login" className="btn btn-outline h-20">Administrador</Link>
                   </div>
                 </div>
               </div>
 
-              {/* Tarjeta de apoyo (opcional, estética app) */}
+              {/* Tarjeta de apoyo */}
               <div className="w-full md:w-80">
                 <div className="card bg-base-100 text-base-content shadow-md">
                   <div className="card-body">
                     <h3 className="card-title">Hoy</h3>
                     <p className="text-sm opacity-70">Revisa citas, visitas y recompensas.</p>
                     <div className="card-actions justify-end">
-                      <Link to="/app/admin" className="btn btn-sm btn-primary">Ir al panel</Link>
+                      <Link to="/app" className="btn btn-sm btn-primary">Ir al panel</Link>
                     </div>
                   </div>
                 </div>
@@ -140,4 +142,3 @@ export default function Home() {
     </div>
   );
 }
-
