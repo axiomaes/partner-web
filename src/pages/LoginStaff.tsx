@@ -14,9 +14,11 @@ type JwtClaims = {
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-const AUTH_PATHS: string[] = (import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login")
+const AUTH_PATHS: string[] = (
+  import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login"
+)
   .split(",")
-  .map((p) => p.trim())
+  .map((p: string) => p.trim())   // <- tipado explícito para evitar TS7006
   .filter(Boolean);
 
 // decode JWT sin validar firma (solo para leer claims en cliente)
@@ -54,18 +56,19 @@ export default function LoginStaff() {
         body,
       });
 
-      if (res.status === 404) continue; // probamos siguiente ruta
+      if (res.status === 404) continue; // probar siguiente ruta
 
       if (res.status === 401) throw new Error("Credenciales inválidas.");
       if (!res.ok && res.status !== 201) {
         throw new Error(`Error del servidor (código ${res.status}).`);
       }
 
-      // éxito (200 o 201)
-      return await res.json();
+      return await res.json(); // éxito 200/201
     }
 
-    throw new Error("No se encontró el endpoint de autenticación (404). Revisa VITE_API_BASE o VITE_API_AUTH_PATHS.");
+    throw new Error(
+      "No se encontró el endpoint de autenticación (404). Revisa VITE_API_BASE o VITE_API_AUTH_PATHS."
+    );
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -76,11 +79,9 @@ export default function LoginStaff() {
     try {
       const data = await tryLogin();
 
-      // Algunos backends devuelven { access_token } y otros { token, user }
       const token: string = (data as any).access_token || (data as any).token;
       if (!token) throw new Error("Respuesta sin token.");
 
-      // Si viene user lo usamos; si no, lo leemos del JWT
       let user = (data as any).user;
       if (!user) {
         const claims = parseJwt(token);
