@@ -1,5 +1,5 @@
 // partner-web/src/pages/CustomersNew.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, createCustomer } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
@@ -9,7 +9,7 @@ type Created = { id: string; name: string; existed?: boolean };
 
 export default function CustomersNew() {
   const navigate = useNavigate();
-  const { businessId, role } = useSession();
+  const { role } = useSession();
   const admin = isAdmin(role);
   const isStaff = !admin; // cualquier rol no-admin
 
@@ -18,39 +18,11 @@ export default function CustomersNew() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [created, setCreated] = useState<Created | null>(null);
-  const [showFull, setShowFull] = useState(false); // modal pantalla completa
 
-  // URL del blob con el PNG del QR (cargado con auth)
-  const [qrUrl, setQrUrl] = useState<string>("");
-
-  // Descargar el PNG protegido como blob y generar URL local
-  const fetchQr = async (customerId: string) => {
-    try {
-      const r = await api.get(
-        `/customers/${encodeURIComponent(customerId)}/qr.png`,
-        { responseType: "blob" }
-      );
-      // limpia URL anterior si existía
-      setQrUrl((old) => {
-        if (old) URL.revokeObjectURL(old);
-        return URL.createObjectURL(r.data);
-      });
-    } catch {
-      setQrUrl("");
-    }
-  };
-
-  // Cuando haya un cliente creado, traemos su QR
-  useEffect(() => {
-    if (created?.id) fetchQr(created.id);
-    // cleanup al desmontar
-    return () => {
-      setQrUrl((old) => {
-        if (old) URL.revokeObjectURL(old);
-        return "";
-      });
-    };
-  }, [created?.id]);
+  // Usa la ruta pública del QR
+  const qrUrl = created
+    ? `${api.defaults.baseURL}/public/customers/${encodeURIComponent(created.id)}/qr.png`
+    : "";
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,9 +30,9 @@ export default function CustomersNew() {
     setSubmitting(true);
     setMsg("");
     setCreated(null);
-    setQrUrl("");
     try {
-      const c = await createCustomer(name.trim(), phone.trim(), businessId);
+      // ⬇️ antes: createCustomer(name, phone, businessId)
+      const c = await createCustomer(name.trim(), phone.trim());
       setCreated(c);
 
       // Si es staff, limpiamos el teléfono del estado para no dejarlo visible en la UI
@@ -83,12 +55,6 @@ export default function CustomersNew() {
     const w = window.open(qrUrl, "_blank", "noopener,noreferrer");
     if (w) w.focus();
   };
-
-  // nombre de archivo al descargar
-  const downloadName = useMemo(
-    () => (created ? `qr-${created.id}.png` : "qr.png"),
-    [created]
-  );
 
   return (
     <AppLayout title="Nuevo cliente" subtitle="Crea un cliente y entrega su QR al instante">
@@ -116,7 +82,6 @@ export default function CustomersNew() {
                   <span className="label-text">Teléfono</span>
                 </label>
                 <input
-                  // STAFF no ve el número mientras escribe
                   type={isStaff ? "password" : "tel"}
                   inputMode="tel"
                   className="input input-bordered"
@@ -134,11 +99,7 @@ export default function CustomersNew() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  className="btn btn-primary"
-                  disabled={submitting}
-                  type="submit"
-                >
+                <button className="btn btn-primary" disabled={submitting} type="submit">
                   {submitting ? (
                     <>
                       <span className="loading loading-spinner" />
@@ -155,11 +116,7 @@ export default function CustomersNew() {
               </div>
 
               {msg && (
-                <div
-                  className={`alert ${
-                    msg.startsWith("❌") ? "alert-warning" : "alert-info"
-                  }`}
-                >
+                <div className={`alert ${msg.startsWith("❌") ? "alert-warning" : "alert-info"}`}>
                   <span>{msg}</span>
                 </div>
               )}
@@ -173,9 +130,7 @@ export default function CustomersNew() {
             <h2 className="card-title">QR del cliente</h2>
 
             {!created ? (
-              <div className="text-sm opacity-70">
-                Crea el cliente para generar su QR.
-              </div>
+              <div className="text-sm opacity-70">Crea el cliente para generar su QR.</div>
             ) : (
               <>
                 <div className="mb-2">
@@ -183,41 +138,16 @@ export default function CustomersNew() {
                   <div className="text-lg font-medium">{created.name}</div>
                 </div>
 
-                <div className="p-4 rounded-box border border-base-300 bg-base-200 w-full">
-                  {qrUrl ? (
-                    <img
-                      src={qrUrl}
-                      alt="QR del cliente"
-                      className="mx-auto w-56 h-56 object-contain"
-                    />
-                  ) : (
-                    <div className="py-12">
-                      <span className="loading loading-spinner" />
-                    </div>
-                  )}
+                <div className="p-4 rounded-box border border-base-300 bg-base-200">
+                  <img src={qrUrl} alt="QR del cliente" className="w-56 h-56 object-contain" />
                 </div>
 
                 <div className="join mt-4">
-                  <a
-                    href={qrUrl || "#"}
-                    download={downloadName}
-                    className={`btn btn-outline join-item ${qrUrl ? "" : "btn-disabled"}`}
-                  >
+                  <a href={qrUrl} download={`qr-${created.id}.png`} className="btn btn-outline join-item">
                     Descargar PNG
                   </a>
-                  <button
-                    onClick={onPrint}
-                    className={`btn btn-outline join-item ${qrUrl ? "" : "btn-disabled"}`}
-                  >
+                  <button onClick={onPrint} className="btn btn-outline join-item">
                     Imprimir
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-outline join-item ${qrUrl ? "" : "btn-disabled"}`}
-                    onClick={() => setShowFull(true)}
-                    disabled={!qrUrl}
-                  >
-                    Pantalla completa
                   </button>
                   <button
                     className="btn btn-primary join-item"
@@ -235,31 +165,6 @@ export default function CustomersNew() {
           </div>
         </div>
       </div>
-
-      {/* Modal de pantalla completa para facilitar la foto del QR */}
-      {showFull && created && qrUrl && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-none w-[92vw] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">QR de {created.name}</h3>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowFull(false)}>
-                ✕
-              </button>
-            </div>
-            <div className="flex items-center justify-center">
-              <img
-                src={qrUrl}
-                alt="QR del cliente"
-                className="w-[70vmin] h-[70vmin] object-contain"
-              />
-            </div>
-            <div className="mt-3 text-center text-sm opacity-70">
-              Pídele al cliente que haga una foto a este código.
-            </div>
-          </div>
-          <div className="modal-backdrop" onClick={() => setShowFull(false)} />
-        </div>
-      )}
     </AppLayout>
   );
 }
