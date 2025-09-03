@@ -1,5 +1,5 @@
 // partner-web/src/pages/StaffCheckin.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import {
@@ -12,10 +12,21 @@ import {
 /**
  * Check-in (Staff)
  * - Buscar por móvil/email
- * - Escanear QR (camera)
+ * - Escanear QR (cámara)
+ * - Beep + vibración al acreditar
+ * - Historial de últimos 5 check-ins
  */
 
 type Tab = "search" | "qr";
+type Via = "QR" | "Manual";
+type CheckinItem = {
+  id: string;
+  label: string;
+  via: Via;
+  at: number; // epoch ms
+  progress?: { count?: number; target?: number };
+  newRewardId?: string;
+};
 
 export default function StaffCheckin() {
   const [tab, setTab] = useState<Tab>("search");
@@ -49,42 +60,82 @@ export default function StaffCheckin() {
     }
   };
 
-  const onCreditVisit = async (id: string) => {
+  // ------------------ FEEDBACK (beep + vibrar) ------------------
+  const audioRef = useRef<AudioContext | null>(null);
+  const feedbackSuccess = () => {
+    try {
+      navigator?.vibrate?.([30, 40, 30]);
+    } catch {}
+    try {
+      const Ctx: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioRef.current) audioRef.current = new Ctx();
+      const ctx = audioRef.current!;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      o.connect(g);
+      g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
+      o.stop(ctx.currentTime + 0.16);
+    } catch {}
+  };
+
+  // ------------------ HISTORIAL ------------------
+  const [history, setHistory] = useState<CheckinItem[]>([]);
+  const pushHistory = (item: CheckinItem) =>
+    setHistory((h) => [item, ...h].slice(0, 5));
+
+  const fmtTime = (t: number) =>
+    new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const onCreditVisit = async (id: string, labelForHistory?: string) => {
     setMsg("");
     try {
       const r = await addVisit(id, "Visita (check-in staff)");
-      setMsg(
-        `✅ Visita registrada. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
-          r?.newReward?.id ? ` · Nueva recompensa ${r.newReward.id}` : ""
-        }`
-      );
+      const t = `✅ Visita registrada. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
+        r?.newReward?.id ? ` · Nueva recompensa ${r.newReward.id}` : ""
+      }`;
+      setMsg(t);
+      feedbackSuccess();
+      pushHistory({
+        id,
+        label: labelForHistory || `Cliente ${id.slice(0, 6)}…`,
+        via: "Manual",
+        at: Date.now(),
+        progress: { count: r?.progress?.count, target: r?.progress?.target },
+        newRewardId: r?.newReward?.id,
+      });
     } catch (e: any) {
       setMsg(e?.response?.data?.message || e?.message || "No se pudo registrar la visita.");
     }
   };
 
   // ------------------ QR ------------------
-  // Cargamos el lector sólo cuando se entra en la pestaña QR
   const [QrReaderCmp, setQrReaderCmp] = useState<any>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
   const [qrMsg, setQrMsg] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [cooldownId, setCooldownId] = useState<any>(null);
+
+  useEffect(() => () => clearTimeout(cooldownId), [cooldownId]);
 
   useEffect(() => {
     if (tab !== "qr") return;
     let cancelled = false;
 
-    // 1) Cargar componente de forma dinámica (evita romper build si falta dependencia)
     import("react-qr-reader")
       .then((m) => !cancelled && setQrReaderCmp(() => m.QrReader))
       .catch(() => {
         setQrReaderCmp(() => null);
-        setQrMsg(
-          "No se pudo cargar el lector QR. Instala la dependencia con: npm i react-qr-reader"
-        );
+        setQrMsg("No se pudo cargar el lector QR. Instala: npm i react-qr-reader");
       });
 
-    // 2) Enumerar cámaras para permitir elegir la trasera
     navigator.mediaDevices
       ?.enumerateDevices()
       .then((list) => {
@@ -92,13 +143,11 @@ export default function StaffCheckin() {
         const cams = list.filter((d) => d.kind === "videoinput");
         setVideoDevices(cams);
         if (!deviceId && cams.length) {
-          // Por defecto intenta la cámara trasera si existe
           const back = cams.find((d) => /back|environment/i.test(d.label)) || cams[0];
           setDeviceId(back.deviceId);
         }
       })
       .catch(() => {});
-
     return () => {
       cancelled = true;
     };
@@ -110,39 +159,53 @@ export default function StaffCheckin() {
     : { facingMode: { ideal: "environment" } };
 
   const onQrResult = async (result: any, error: any) => {
-    if (!!error) return; // ignoramos frames sin código
+    if (error || processing) return;
+    let text: string | null = null;
     try {
-      const text: string =
+      text =
         typeof result?.text === "string"
           ? result.text
           : typeof result?.getText === "function"
           ? result.getText()
           : String(result);
-      // Intentamos el payload JSON oficial
+    } catch {
+      return;
+    }
+    if (!text) return;
+
+    setProcessing(true);
+    try {
       setQrMsg("Procesando QR…");
+
+      // Intentamos extraer un customerId para el historial
+      let customerIdForHistory: string | undefined;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.customerId) customerIdForHistory = String(parsed.customerId);
+      } catch {
+        /* QR simple u otro formato */
+      }
+
       const r = await addVisitFromQrPayload(text);
       setQrMsg(
         `✅ Visita por QR. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
           r?.newReward?.id ? ` · Nueva recompensa ${r.newReward.id}` : ""
         }`
       );
+      feedbackSuccess();
+      pushHistory({
+        id: customerIdForHistory || "desconocido",
+        label: customerIdForHistory ? `QR · ${customerIdForHistory.slice(0, 6)}…` : "QR · cliente",
+        via: "QR",
+        at: Date.now(),
+        progress: { count: r?.progress?.count, target: r?.progress?.target },
+        newRewardId: r?.newReward?.id,
+      });
     } catch (e: any) {
-      // Fallback: si fuera un QR con solo el ID, intentamos acreditarlo
-      try {
-        const maybeId = String(e?.message || "").includes("formato no reconocido")
-          ? null
-          : null;
-        if (maybeId) {
-          const r = await addVisit(maybeId, "Visita por QR (simple)");
-          setQrMsg(
-            `✅ Visita por QR. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}`
-          );
-          return;
-        }
-      } catch {}
-      setQrMsg(
-        `❌ ${e?.response?.data?.message || e?.message || "No se pudo procesar el QR."}`
-      );
+      setQrMsg(`❌ ${e?.response?.data?.message || e?.message || "No se pudo procesar el QR."}`);
+    } finally {
+      const t = setTimeout(() => setProcessing(false), 1200); // cooldown 1.2s
+      setCooldownId(t);
     }
   };
 
@@ -168,6 +231,7 @@ export default function StaffCheckin() {
           </button>
         </div>
 
+        {/* === BUSCAR === */}
         {tab === "search" && (
           <div className="card bg-base-100 shadow-sm">
             <div className="card-body">
@@ -197,24 +261,32 @@ export default function StaffCheckin() {
               </form>
 
               {found && (
-                <div className="alert alert-info mt-4">
+                <div className="alert alert-info mt-4 items-center">
                   <div>
                     <div className="font-medium">{found.name}</div>
                     <div className="text-xs opacity-70">{found.phone || "—"} · {found.email || "—"}</div>
                   </div>
                   <div className="ml-auto">
-                    <button className="btn btn-sm btn-primary" onClick={() => onCreditVisit(found.id)}>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => onCreditVisit(found.id, found.name || undefined)}
+                    >
                       Acreditar visita
                     </button>
                   </div>
                 </div>
               )}
 
-              {!!msg && <div className={`mt-3 alert ${msg.startsWith("✅") ? "alert-success" : "alert-warning"}`}><span>{msg}</span></div>}
+              {!!msg && (
+                <div className={`mt-3 alert ${msg.startsWith("✅") ? "alert-success" : "alert-warning"}`}>
+                  <span>{msg}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
 
+        {/* === QR === */}
         {tab === "qr" && (
           <div className="card bg-base-100 shadow-sm">
             <div className="card-body">
@@ -240,17 +312,14 @@ export default function StaffCheckin() {
 
               {!QrReaderCmp ? (
                 <div className="alert mt-3">
-                  <span>
-                    {qrMsg || "Cargando lector… Si no inicia, concede permiso de cámara."}
-                  </span>
+                  <span>{qrMsg || "Cargando lector… Si no inicia, concede permiso de cámara."}</span>
                 </div>
               ) : (
                 <div className="rounded-lg overflow-hidden border border-base-300">
-                  {/* QrReader constraints: facingMode/env o deviceId exacto */}
                   <QrReaderCmp
                     constraints={{ facingMode: "environment", ...(constraints ? { video: constraints } : {}) } as any}
                     onResult={onQrResult}
-                    scanDelay={350}
+                    scanDelay={800} // más conservador
                     videoStyle={{ width: "100%", height: "auto" }}
                     containerStyle={{ width: "100%" }}
                   />
@@ -270,6 +339,43 @@ export default function StaffCheckin() {
             </div>
           </div>
         )}
+
+        {/* === HISTORIAL === */}
+        <div className="card bg-base-100 shadow-sm mt-6">
+          <div className="card-body">
+            <h3 className="card-title">Últimos check-ins</h3>
+            {!history.length ? (
+              <div className="text-sm opacity-70">Aún no hay registros en esta sesión.</div>
+            ) : (
+              <div className="overflow-x-auto rounded-box border border-base-300">
+                <table className="table table-compact w-full">
+                  <thead className="bg-base-200 sticky top-0 z-10">
+                    <tr>
+                      <th>Hora</th>
+                      <th>Cliente</th>
+                      <th>Vía</th>
+                      <th>Progreso</th>
+                      <th>Recompensa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h, i) => (
+                      <tr key={i}>
+                        <td className="whitespace-nowrap">{fmtTime(h.at)}</td>
+                        <td className="whitespace-nowrap">{h.label}</td>
+                        <td>{h.via}</td>
+                        <td>
+                          {h.progress?.count ?? "?"}/{h.progress?.target ?? "?"}
+                        </td>
+                        <td>{h.newRewardId ? `🎁 ${h.newRewardId}` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </AppLayout>
   );
