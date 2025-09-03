@@ -12,26 +12,43 @@ type Customer = {
   email?: string | null;
 };
 
+function NeedLoginCard() {
+  return (
+    <div className="min-h-[50vh] grid place-items-center">
+      <div className="card bg-base-100 shadow">
+        <div className="card-body">
+          <h2 className="card-title">Necesitas iniciar sesión</h2>
+          <p>Para acceder al Panel del Administrador debes iniciar sesión con una cuenta de administrador.</p>
+          <div className="card-actions justify-end">
+            <Link to="/login" className="btn btn-primary">Ir a login</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoPermissionCard() {
+  return (
+    <div className="min-h-[50vh] grid place-items-center">
+      <div className="card bg-base-100 shadow">
+        <div className="card-body">
+          <h2 className="card-title">No autorizado</h2>
+          <p>No tienes permisos para esta sección. Pide a un administrador que te asigne rol de <b>ADMIN</b> / <b>OWNER</b> / <b>SUPERADMIN</b>.</p>
+          <div className="card-actions justify-end">
+            <Link to="/app/staff/checkin" className="btn">Ir a Staff</Link>
+            <Link to="/login" className="btn btn-ghost">Cambiar de usuario</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const nav = useNavigate();
   const { role, token } = useSession();
   const admin = isAdmin(role);
-
-  /**
-   * Guard robusto:
-   * - Sin token → a /login
-   * - Con token pero sin rol admin → a /unauthorized
-   * (evitamos mandar a /app para no entrar en loop con el index que redirige a /app/admin)
-   */
-  useEffect(() => {
-    if (!token) {
-      nav("/login", { replace: true });
-      return;
-    }
-    if (!admin) {
-      nav("/unauthorized", { replace: true });
-    }
-  }, [token, admin, nav]);
 
   // ----- Estado: quick points -----
   const [qpPhone, setQpPhone] = useState("+34");
@@ -60,37 +77,29 @@ export default function AdminPanel() {
 
   useEffect(() => {
     let mounted = true;
-    // Si no hay token todavía, no dispares la carga
-    if (!token) return;
+    if (!token) return; // sin token no llamamos a la API
 
     setLoading(true);
     setErr("");
 
-    api
-      .get("/customers")
-      .then((r) => {
-        if (mounted) setCustomers(r.data as Customer[]);
-      })
-      .catch((e) => {
+    api.get("/customers")
+      .then(r => { if (mounted) setCustomers(r.data as Customer[]); })
+      .catch(e => {
         if (!mounted) return;
         const msg = e?.response?.status === 401
           ? "No autorizado. Inicia sesión de administrador."
           : e?.response?.data?.message || e?.message || "Error cargando clientes";
         setErr(msg);
       })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+      .finally(() => { if (mounted) setLoading(false); });
 
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [token]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return customers;
-    return customers.filter((c) =>
+    return customers.filter(c =>
       (c.name || "").toLowerCase().includes(s) ||
       (c.phone || "").toLowerCase().includes(s) ||
       (c.email || "").toLowerCase().includes(s)
@@ -100,16 +109,30 @@ export default function AdminPanel() {
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const onResend = async (id: string) => {
-    setResendMsg((m) => ({ ...m, [id]: "Enviando…" }));
+    setResendMsg(m => ({ ...m, [id]: "Enviando…" }));
     try {
       const r = await resendCustomerQr(id);
-      if (r?.queued) setResendMsg((m) => ({ ...m, [id]: "✅ Enviado/encolado" }));
-      else setResendMsg((m) => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
+      if (r?.queued) setResendMsg(m => ({ ...m, [id]: "✅ Enviado/encolado" }));
+      else setResendMsg(m => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
     } catch (e: any) {
-      setResendMsg((m) => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
+      setResendMsg(m => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
     }
   };
 
+  // === Guards visuales (sin redirección dura para evitar bucles) ===
+  if (!token) return (
+    <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
+      <NeedLoginCard />
+    </AppLayout>
+  );
+
+  if (!admin) return (
+    <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
+      <NoPermissionCard />
+    </AppLayout>
+  );
+
+  // === Render normal para ADMIN ===
   return (
     <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
       <div className="grid lg:grid-cols-2 gap-6">
@@ -188,7 +211,7 @@ export default function AdminPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((c) => (
+                    {filtered.map(c => (
                       <tr key={c.id}>
                         <td className="align-top">
                           <div className="font-medium">{c.name}</div>
