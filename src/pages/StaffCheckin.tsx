@@ -193,8 +193,16 @@ export default function StaffCheckin() {
 
   // ------------------ RENDER ------------------
   return (
-    <AppLayout title="Check-in (Staff)" subtitle={<Link to="/app" className="link">← Volver</Link>}>
+    <AppLayout
+      title="Check-in (Staff)"
+      subtitle="Escanea el QR o ingresa móvil/email"
+    >
       <div className="max-w-3xl">
+        {/* back link separado del subtitle (subtitle es string) */}
+        <div className="mb-3">
+          <Link to="/app" className="link">← Volver</Link>
+        </div>
+
         {/* Tabs */}
         <div role="tablist" className="tabs tabs-bordered mb-4">
           <button
