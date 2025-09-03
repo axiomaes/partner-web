@@ -24,6 +24,7 @@ import CustomersNew from "@/pages/CustomersNew";
 import CustomerDetail from "@/pages/CustomerDetail";
 import StaffNew from "@/pages/StaffNew";
 import AdminPanel from "@/pages/AdminPanel";
+import AdminUsers from "@/pages/AdminUsers"; // 👈 NUEVO
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -66,13 +67,18 @@ const router = createBrowserRouter([
       // Por defecto, enviar al Admin Panel
       { index: true, element: <Navigate to="admin" replace /> },
 
-      /**
-       * Admin Panel
-       * 👉 Dejamos esta ruta SIN ProtectedRoute para evitar el bloqueo "No autorizado"
-       * mientras se termina el flujo de login/roles. El propio AdminPanel ya
-       * implementa un guard "blando" y redirige si no eres admin.
-       */
+      // Admin Panel (deja este sin ProtectedRoute si sigues usando guard interno)
       { path: "admin", element: <AdminPanel /> },
+
+      // Usuarios (ADMIN, OWNER, SUPERADMIN)
+      {
+        path: "users",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "OWNER", "SUPERADMIN"]}>
+            <AdminUsers />
+          </ProtectedRoute>
+        ),
+      },
 
       // Clientes (ADMIN, BARBER, OWNER, SUPERADMIN)
       {
