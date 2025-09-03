@@ -1,124 +1,161 @@
 // partner-web/src/pages/StaffCheckin.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { isAdmin, useSession } from "@/shared/auth";
-import { addVisit, addVisitFromQrPayload, lookupCustomer, CustomerLite } from "@/shared/api";
+import { Link } from "react-router-dom";
+import AppLayout from "@/layout/AppLayout";
+import {
+  lookupCustomer,
+  addVisit,
+  addVisitFromQrPayload,
+  type CustomerLite,
+} from "@/shared/api";
 
-// === Nuevo hook: carga dinámica de react-qr-barcode-scanner ===
-const useQrScanner = () => {
-  const [QrScanner, setQrScanner] = useState<any>(null);
-  useEffect(() => {
-    let mounted = true;
-    import("react-qr-barcode-scanner")
-      .then((m) => mounted && setQrScanner(() => m.default))
-      .catch(() => {});
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  return QrScanner;
-};
+/**
+ * Check-in (Staff)
+ * - Buscar por móvil/email
+ * - Escanear QR (camera)
+ */
 
-function maskPhone(p?: string | null) {
-  return p ? String(p).replace(/.(?=.{4})/g, "•") : "—";
-}
-function maskEmail(e?: string | null) {
-  if (!e) return "—";
-  const [u = "", d = ""] = String(e).split("@");
-  const uu = u.slice(0, 2) + "•".repeat(Math.max(0, u.length - 2));
-  return `${uu}@${d}`;
-}
+type Tab = "search" | "qr";
 
 export default function StaffCheckin() {
-  const nav = useNavigate();
-  const { role } = useSession();
-  const admin = isAdmin(role);
+  const [tab, setTab] = useState<Tab>("search");
 
-  const [tab, setTab] = useState<"buscar" | "qr">("buscar");
-
-  // Buscar por contacto
-  const [phone, setPhone] = useState("");
+  // ------------------ BUSCAR ------------------
+  const [phone, setPhone] = useState("+34 ");
   const [email, setEmail] = useState("");
+  const [searching, setSearching] = useState(false);
   const [found, setFound] = useState<CustomerLite | null>(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [msg, setMsg] = useState<string>("");
+  const [msg, setMsg] = useState("");
 
-  // QR
-  const QrScanner = useQrScanner();
-  const [qrError, setQrError] = useState<string>("");
-  const [qrPayloadManual, setQrPayloadManual] = useState<string>("");
+  const canSearch = useMemo(() => {
+    const hasPhone = phone.replace(/\D/g, "").length >= 6;
+    const hasEmail = /\S+@\S+\.\S+/.test(email);
+    return hasPhone || hasEmail;
+  }, [phone, email]);
 
-  const canSearch = useMemo(() => phone.trim() !== "" || email.trim() !== "", [phone, email]);
-
-  const submitLookup = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setMsg("");
-    setFound(null);
-    if (!canSearch) {
-      setMsg("Ingresa móvil o email.");
-      return;
-    }
-    setLookupLoading(true);
-    try {
-      const c = await lookupCustomer({ phone, email });
-      if (c?.id) setFound(c);
-      else setMsg("No se encontró ningún cliente con esos datos.");
-    } catch (err: any) {
-      setMsg(err?.response?.data?.message || err.message || "Error al buscar.");
-    } finally {
-      setLookupLoading(false);
-    }
-  };
-
-  const doAddVisit = async (customerId: string) => {
-    setMsg("");
-    try {
-      const r = await addVisit(customerId, "Visita por staff");
-      setMsg(
-        `✅ Visita acreditada. Progreso: ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
-          r?.newReward?.id ? " · Nueva recompensa 🎉" : ""
-        }`
-      );
-    } catch (err: any) {
-      setMsg(err?.response?.data?.message || err.message || "No se pudo acreditar la visita.");
-    }
-  };
-
-  const onQrResult = async (resultText?: string | null) => {
-    if (!resultText) return;
-    try {
-      setQrError("");
-      const res = await addVisitFromQrPayload(resultText);
-      setMsg(
-        `✅ Visita por QR. Progreso: ${res?.progress?.count ?? "?"}/${res?.progress?.target ?? "?"}${
-          res?.newReward?.id ? " · Nueva recompensa 🎉" : ""
-        }`
-      );
-    } catch (err: any) {
-      setQrError(err?.message || "QR inválido.");
-    }
-  };
-
-  const onSubmitQrManual = async (e: React.FormEvent) => {
+  const onSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onQrResult(qrPayloadManual);
+    setMsg("");
+    setSearching(true);
+    setFound(null);
+    try {
+      const cust = await lookupCustomer({ phone, email });
+      if (!cust) setMsg("No se encontró cliente con esos datos.");
+      setFound(cust);
+    } catch (e: any) {
+      setMsg(e?.message || "No se pudo buscar el cliente.");
+    } finally {
+      setSearching(false);
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-base-200 p-4">
-      <div className="max-w-3xl mx-auto space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Check-in (Staff)</h1>
-          <button className="btn btn-ghost btn-sm" onClick={() => nav(-1)}>
-            ← Volver
-          </button>
-        </div>
+  const onCreditVisit = async (id: string) => {
+    setMsg("");
+    try {
+      const r = await addVisit(id, "Visita (check-in staff)");
+      setMsg(
+        `✅ Visita registrada. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
+          r?.newReward?.id ? ` · Nueva recompensa ${r.newReward.id}` : ""
+        }`
+      );
+    } catch (e: any) {
+      setMsg(e?.response?.data?.message || e?.message || "No se pudo registrar la visita.");
+    }
+  };
 
-        <div role="tablist" className="tabs tabs-boxed">
+  // ------------------ QR ------------------
+  // Cargamos el lector sólo cuando se entra en la pestaña QR
+  const [QrReaderCmp, setQrReaderCmp] = useState<any>(null);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
+  const [qrMsg, setQrMsg] = useState("");
+
+  useEffect(() => {
+    if (tab !== "qr") return;
+    let cancelled = false;
+
+    // 1) Cargar componente de forma dinámica (evita romper build si falta dependencia)
+    import("react-qr-reader")
+      .then((m) => !cancelled && setQrReaderCmp(() => m.QrReader))
+      .catch(() => {
+        setQrReaderCmp(() => null);
+        setQrMsg(
+          "No se pudo cargar el lector QR. Instala la dependencia con: npm i react-qr-reader"
+        );
+      });
+
+    // 2) Enumerar cámaras para permitir elegir la trasera
+    navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((list) => {
+        if (cancelled) return;
+        const cams = list.filter((d) => d.kind === "videoinput");
+        setVideoDevices(cams);
+        if (!deviceId && cams.length) {
+          // Por defecto intenta la cámara trasera si existe
+          const back = cams.find((d) => /back|environment/i.test(d.label)) || cams[0];
+          setDeviceId(back.deviceId);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const constraints: MediaTrackConstraints | undefined = deviceId
+    ? { deviceId: { exact: deviceId } }
+    : { facingMode: { ideal: "environment" } };
+
+  const onQrResult = async (result: any, error: any) => {
+    if (!!error) return; // ignoramos frames sin código
+    try {
+      const text: string =
+        typeof result?.text === "string"
+          ? result.text
+          : typeof result?.getText === "function"
+          ? result.getText()
+          : String(result);
+      // Intentamos el payload JSON oficial
+      setQrMsg("Procesando QR…");
+      const r = await addVisitFromQrPayload(text);
+      setQrMsg(
+        `✅ Visita por QR. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}${
+          r?.newReward?.id ? ` · Nueva recompensa ${r.newReward.id}` : ""
+        }`
+      );
+    } catch (e: any) {
+      // Fallback: si fuera un QR con solo el ID, intentamos acreditarlo
+      try {
+        const maybeId = String(e?.message || "").includes("formato no reconocido")
+          ? null
+          : null;
+        if (maybeId) {
+          const r = await addVisit(maybeId, "Visita por QR (simple)");
+          setQrMsg(
+            `✅ Visita por QR. Progreso ${r?.progress?.count ?? "?"}/${r?.progress?.target ?? "?"}`
+          );
+          return;
+        }
+      } catch {}
+      setQrMsg(
+        `❌ ${e?.response?.data?.message || e?.message || "No se pudo procesar el QR."}`
+      );
+    }
+  };
+
+  // ------------------ RENDER ------------------
+  return (
+    <AppLayout title="Check-in (Staff)" subtitle={<Link to="/app" className="link">← Volver</Link>}>
+      <div className="max-w-3xl">
+        {/* Tabs */}
+        <div role="tablist" className="tabs tabs-bordered mb-4">
           <button
             role="tab"
-            className={`tab ${tab === "buscar" ? "tab-active" : ""}`}
-            onClick={() => setTab("buscar")}
+            className={`tab ${tab === "search" ? "tab-active" : ""}`}
+            onClick={() => setTab("search")}
           >
             Buscar cliente
           </button>
@@ -131,14 +168,11 @@ export default function StaffCheckin() {
           </button>
         </div>
 
-        {msg && <div className="alert alert-success text-sm">{msg}</div>}
-        {qrError && <div className="alert alert-warning text-sm">{qrError}</div>}
-
-        {tab === "buscar" && (
+        {tab === "search" && (
           <div className="card bg-base-100 shadow-sm">
             <div className="card-body">
-              <h2 className="card-title">Buscar por móvil o email</h2>
-              <form className="grid gap-3 md:grid-cols-2" onSubmit={submitLookup}>
+              <h3 className="card-title">Buscar por móvil o email</h3>
+              <form onSubmit={onSearch} className="grid gap-3 max-w-lg">
                 <div className="form-control">
                   <label className="label"><span className="label-text">Móvil del cliente</span></label>
                   <input
@@ -146,7 +180,6 @@ export default function StaffCheckin() {
                     placeholder="+34 6XXXXXXXX"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    inputMode="tel"
                   />
                 </div>
                 <div className="form-control">
@@ -156,83 +189,88 @@ export default function StaffCheckin() {
                     placeholder="cliente@ejemplo.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    inputMode="email"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <button className="btn btn-primary" type="submit" disabled={!canSearch || lookupLoading}>
-                    {lookupLoading ? <span className="loading loading-spinner" /> : "Buscar"}
-                  </button>
-                </div>
+                <button className={`btn btn-primary w-28 ${searching ? "loading" : ""}`} disabled={!canSearch || searching}>
+                  {searching ? "Buscando…" : "Buscar"}
+                </button>
               </form>
 
               {found && (
-                <div className="mt-4 border-t pt-4">
-                  <div className="text-sm opacity-70">Cliente encontrado</div>
-                  <div className="font-medium">{found.name}</div>
-                  <div className="text-sm">{admin ? found.phone || "—" : maskPhone(found.phone)}</div>
-                  <div className="text-sm">{admin ? found.email || "—" : maskEmail(found.email)}</div>
-
-                  <div className="mt-3">
-                    <button className="btn btn-success" onClick={() => doAddVisit(found.id)}>
+                <div className="alert alert-info mt-4">
+                  <div>
+                    <div className="font-medium">{found.name}</div>
+                    <div className="text-xs opacity-70">{found.phone || "—"} · {found.email || "—"}</div>
+                  </div>
+                  <div className="ml-auto">
+                    <button className="btn btn-sm btn-primary" onClick={() => onCreditVisit(found.id)}>
                       Acreditar visita
                     </button>
                   </div>
                 </div>
               )}
+
+              {!!msg && <div className={`mt-3 alert ${msg.startsWith("✅") ? "alert-success" : "alert-warning"}`}><span>{msg}</span></div>}
             </div>
           </div>
         )}
 
         {tab === "qr" && (
           <div className="card bg-base-100 shadow-sm">
-            <div className="card-body space-y-3">
-              <h2 className="card-title">Escanear código QR</h2>
+            <div className="card-body">
+              <div className="flex items-center justify-between">
+                <h3 className="card-title">Escanear QR del cliente</h3>
+                {videoDevices.length > 1 && (
+                  <div className="form-control">
+                    <label className="label"><span className="label-text">Cámara</span></label>
+                    <select
+                      className="select select-bordered select-sm"
+                      value={deviceId}
+                      onChange={(e) => setDeviceId(e.target.value)}
+                    >
+                      {videoDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Cámara ${d.deviceId.slice(0, 6)}…`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
 
-              {QrScanner ? (
-                <div className="rounded-lg overflow-hidden border">
-                  <QrScanner
-                    // cada ~300ms procesa frame
-                    delay={300}
-                    // cámara trasera en móviles
-                    constraints={{ facingMode: "environment" }}
-                    // callback de resultado/errores
-                    onUpdate={(err: any, result: any) => {
-                      if (result) {
-                        const text =
-                          typeof result === "string"
-                            ? result
-                            : result?.getText?.() || result?.text || String(result);
-                        onQrResult(text);
-                      }
-                      // errores de escaneo se ignoran hasta tener un resultado
-                    }}
-                    style={{ width: "100%" }}
-                  />
+              {!QrReaderCmp ? (
+                <div className="alert mt-3">
+                  <span>
+                    {qrMsg || "Cargando lector… Si no inicia, concede permiso de cámara."}
+                  </span>
                 </div>
               ) : (
-                <div className="text-sm opacity-70">
-                  Cargando lector de QR… Si no carga, usa el formulario de abajo.
+                <div className="rounded-lg overflow-hidden border border-base-300">
+                  {/* QrReader constraints: facingMode/env o deviceId exacto */}
+                  <QrReaderCmp
+                    constraints={{ facingMode: "environment", ...(constraints ? { video: constraints } : {}) } as any}
+                    onResult={onQrResult}
+                    scanDelay={350}
+                    videoStyle={{ width: "100%", height: "auto" }}
+                    containerStyle={{ width: "100%" }}
+                  />
                 </div>
               )}
 
-              <form className="grid gap-2" onSubmit={onSubmitQrManual}>
-                <label className="text-sm opacity-70">Pegado manual del contenido del QR</label>
-                <textarea
-                  className="textarea textarea-bordered"
-                  placeholder='{"t":"axioma-visit","customerId":"...","businessId":"..."}'
-                  value={qrPayloadManual}
-                  onChange={(e) => setQrPayloadManual(e.target.value)}
-                  rows={3}
-                />
-                <button className="btn btn-outline btn-sm w-fit" type="submit">
-                  Procesar payload
-                </button>
-              </form>
+              {!!qrMsg && (
+                <div className={`mt-3 alert ${qrMsg.startsWith("✅") ? "alert-success" : qrMsg.startsWith("❌") ? "alert-warning" : ""}`}>
+                  <span>{qrMsg}</span>
+                </div>
+              )}
+
+              <div className="text-xs opacity-70 mt-2">
+                El QR debe contener un payload JSON con formato:
+                <code className="ml-1">{"{ t:'axioma-visit', customerId, businessId }"}</code>.
+              </div>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </AppLayout>
   );
 }
