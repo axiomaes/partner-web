@@ -1,20 +1,23 @@
 // partner-web/src/App.tsx
 import { useState } from "react";
 import { Route, Routes, Navigate, Link, NavLink } from "react-router-dom";
+
+// Páginas públicas
 import Home from "./pages/Home";
 import CustomerOTP from "./pages/CustomerOTP";
 import LoginStaff from "./pages/LoginStaff";
-import Dashboard from "./pages/Dashboard";
 import Unauthorized from "./pages/Unauthorized";
+
+// Panel (protegido)
+import Dashboard from "./pages/Dashboard";
+import CustomersNew from "./pages/CustomersNew";
+import CustomerDetail from "./pages/CustomerDetail";
+import StaffNew from "./pages/StaffNew";
+
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdminPanel from "./pages/AdminPanel"; // <-- nuevo
-import { useSession, isAdmin as isAdminFn } from "@/shared/auth"; // <-- para mostrar link condicional
 
 export default function App(): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
-
-  const { role } = useSession();
-  const isAdmin = isAdminFn(role);
 
   const navClass = ({ isActive }: { isActive: boolean }): string =>
     isActive ? "nav-link-active" : "nav-link";
@@ -37,23 +40,11 @@ export default function App(): JSX.Element {
 
           {/* Navegación desktop */}
           <nav className="hidden sm:flex items-center gap-2 text-sm">
-            <NavLink to="/" className={navClass}>
-              Inicio
-            </NavLink>
-            <NavLink to="/customer-auth" className={navClass}>
-              Acceso clientes
-            </NavLink>
-            <NavLink to="/login" className={navClass}>
-              Staff
-            </NavLink>
-            <NavLink to="/dashboard" className={navClass}>
-              Panel
-            </NavLink>
-            {isAdmin && (
-              <NavLink to="/admin" className={navClass}>
-                Admin
-              </NavLink>
-            )}
+            <NavLink to="/" className={navClass}>Inicio</NavLink>
+            <NavLink to="/customer-auth" className={navClass}>Acceso clientes</NavLink>
+            <NavLink to="/login" className={navClass}>Staff</NavLink>
+            {/* 👇 El panel vive bajo /app */}
+            <NavLink to="/app" className={navClass}>Panel</NavLink>
           </nav>
 
           {/* Botón menú móvil */}
@@ -72,23 +63,11 @@ export default function App(): JSX.Element {
         {open && (
           <div className="sm:hidden bg-brand-primary-dark/95 text-white border-t border-white/10 shadow-lg backdrop-blur">
             <div className="container-app py-2 flex flex-col">
-              <NavLink to="/" className={navClass} onClick={() => setOpen(false)}>
-                Inicio
-              </NavLink>
-              <NavLink to="/customer-auth" className={navClass} onClick={() => setOpen(false)}>
-                Acceso clientes
-              </NavLink>
-              <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>
-                Staff
-              </NavLink>
-              <NavLink to="/dashboard" className={navClass} onClick={() => setOpen(false)}>
-                Panel
-              </NavLink>
-              {isAdmin && (
-                <NavLink to="/admin" className={navClass} onClick={() => setOpen(false)}>
-                  Admin
-                </NavLink>
-              )}
+              <NavLink to="/" className={navClass} onClick={() => setOpen(false)}>Inicio</NavLink>
+              <NavLink to="/customer-auth" className={navClass} onClick={() => setOpen(false)}>Acceso clientes</NavLink>
+              <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>Staff</NavLink>
+              {/* 👇 coherente con el desktop */}
+              <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>Panel</NavLink>
             </div>
           </div>
         )}
@@ -97,33 +76,56 @@ export default function App(): JSX.Element {
       {/* CONTENIDO */}
       <main className="flex-1 container-app py-6 sm:py-8">
         <Routes>
+          {/* Públicas */}
           <Route path="/" element={<Home />} />
           <Route path="/customer-auth" element={<CustomerOTP />} />
           <Route path="/login" element={<LoginStaff />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
 
-          {/* Panel staff/admin (ambos roles) */}
+          {/* Panel protegido bajo /app/* */}
           <Route
-            path="/dashboard"
+            path="/app"
             element={
               <ProtectedRoute roles={["ADMIN", "BARBER"]}>
                 <Dashboard />
               </ProtectedRoute>
             }
           />
-
-          {/* Admin Panel (solo ADMIN) */}
           <Route
-            path="/admin"
+            path="/app/customers"
             element={
-              <ProtectedRoute roles={["ADMIN"]}>
-                <AdminPanel />
+              <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+                {/* Si no tienes listado, puedes dejar temporalmente el “nuevo cliente” */}
+                <CustomersNew />
               </ProtectedRoute>
             }
           />
-          {/* Alias de compatibilidad */}
-          <Route path="/app/admin" element={<Navigate to="/admin" replace />} />
+          <Route
+            path="/app/customers/new"
+            element={
+              <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+                <CustomersNew />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/customers/:id"
+            element={
+              <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+                <CustomerDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/staff/new"
+            element={
+              <ProtectedRoute roles={["ADMIN"]}>
+                <StaffNew />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -134,9 +136,7 @@ export default function App(): JSX.Element {
           <div className="bg-white rounded-2xl shadow border border-slate-100">
             <div className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p>© {new Date().getFullYear()} La Cubierta Barbería · Plataforma Axioma Partner</p>
-              <p className="text-slate-400">
-                Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa
-              </p>
+              <p className="text-slate-400">Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa</p>
             </div>
           </div>
         </div>
