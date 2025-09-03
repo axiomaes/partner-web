@@ -1,3 +1,4 @@
+// partner-web/src/pages/AdminPanel.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
@@ -13,13 +14,24 @@ type Customer = {
 
 export default function AdminPanel() {
   const nav = useNavigate();
-  const { role } = useSession();
+  const { role, token } = useSession();
   const admin = isAdmin(role);
 
-  // Guard “blando”: si no es admin, lo mando a inicio
+  /**
+   * Guard robusto:
+   * - Sin token → a /login
+   * - Con token pero sin rol admin → a /unauthorized
+   * (evitamos mandar a /app para no entrar en loop con el index que redirige a /app/admin)
+   */
   useEffect(() => {
-    if (!admin) nav("/app", { replace: true });
-  }, [admin, nav]);
+    if (!token) {
+      nav("/login", { replace: true });
+      return;
+    }
+    if (!admin) {
+      nav("/unauthorized", { replace: true });
+    }
+  }, [token, admin, nav]);
 
   // ----- Estado: quick points -----
   const [qpPhone, setQpPhone] = useState("+34");
@@ -48,19 +60,37 @@ export default function AdminPanel() {
 
   useEffect(() => {
     let mounted = true;
+    // Si no hay token todavía, no dispares la carga
+    if (!token) return;
+
     setLoading(true);
     setErr("");
-    api.get("/customers")
-      .then(r => { if (mounted) setCustomers(r.data as Customer[]); })
-      .catch(e => { if (mounted) setErr(e?.response?.data?.message || e?.message || "Error cargando clientes"); })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
-  }, []);
+
+    api
+      .get("/customers")
+      .then((r) => {
+        if (mounted) setCustomers(r.data as Customer[]);
+      })
+      .catch((e) => {
+        if (!mounted) return;
+        const msg = e?.response?.status === 401
+          ? "No autorizado. Inicia sesión de administrador."
+          : e?.response?.data?.message || e?.message || "Error cargando clientes";
+        setErr(msg);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [token]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return customers;
-    return customers.filter(c =>
+    return customers.filter((c) =>
       (c.name || "").toLowerCase().includes(s) ||
       (c.phone || "").toLowerCase().includes(s) ||
       (c.email || "").toLowerCase().includes(s)
@@ -70,13 +100,13 @@ export default function AdminPanel() {
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const onResend = async (id: string) => {
-    setResendMsg(m => ({ ...m, [id]: "Enviando…" }));
+    setResendMsg((m) => ({ ...m, [id]: "Enviando…" }));
     try {
       const r = await resendCustomerQr(id);
-      if (r?.queued) setResendMsg(m => ({ ...m, [id]: "✅ Enviado/encolado" }));
-      else setResendMsg(m => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
+      if (r?.queued) setResendMsg((m) => ({ ...m, [id]: "✅ Enviado/encolado" }));
+      else setResendMsg((m) => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
     } catch (e: any) {
-      setResendMsg(m => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
+      setResendMsg((m) => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
     }
   };
 
@@ -158,7 +188,7 @@ export default function AdminPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(c => (
+                    {filtered.map((c) => (
                       <tr key={c.id}>
                         <td className="align-top">
                           <div className="font-medium">{c.name}</div>
@@ -194,7 +224,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* STAFF – placeholder (cuando tengas API de Users) */}
+        {/* STAFF – placeholder */}
         <div className="card bg-base-100 shadow-sm lg:col-span-2">
           <div className="card-body">
             <h2 className="card-title">Equipo (staff)</h2>
