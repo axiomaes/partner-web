@@ -1,93 +1,101 @@
-import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../shared/api";
+// partner-web/src/pages/LoginStaff.tsx
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { api } from "@/shared/api";
+
+type LoginResp = { access_token: string }; // la API devuelve access_token
+
+function decodeJwt<T = any>(jwt: string): T | null {
+  try {
+    const [, payload] = jwt.split(".");
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
 
 export default function LoginStaff() {
   const nav = useNavigate();
   const [email, setEmail] = useState("admin@axioma-creativa.es");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
 
-  async function onSubmit(e: FormEvent) {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMsg("");
     setLoading(true);
-    setErr(null);
     try {
-      const res = await api.post("/auth/login", { email, password });
-      const { token, user } = res.data || {};
-      if (token) {
-        // Persistimos en localStorage para que el interceptor lo use
-        localStorage.setItem("auth", JSON.stringify({ token, user }));
-      }
-      nav("/dashboard");
-    } catch (e: any) {
-      const msg =
-        e?.response?.status === 401
-          ? "Credenciales inválidas."
-          : e?.response?.data?.message || e?.message || "Error al iniciar sesión.";
-      setErr(msg);
+      const r = await api.post<LoginResp>("/auth/login", { email: email.trim(), password });
+      const accessToken = r.data?.access_token;
+      if (!accessToken) throw new Error("Respuesta inválida: falta access_token");
+
+      // Decodificar el JWT para armar el objeto user esperado por el front
+      const payload = decodeJwt<any>(accessToken);
+      // payload típico del backend: { sub, email, role, businessId, iat, exp }
+      const user = {
+        id: payload?.sub,
+        email: payload?.email ?? email.trim(),
+        role: payload?.role ?? "BARBER",
+        businessId: payload?.businessId ?? null,
+      };
+
+      // Normalizar a la forma que usan useSession()/isAdmin(): { token, user }
+      localStorage.setItem(
+        "axioma_auth",
+        JSON.stringify({ token: accessToken, user })
+      );
+
+      // Ir al panel admin (el guard visual verificará role)
+      nav("/app/admin", { replace: true });
+    } catch (err: any) {
+      setMsg(err?.response?.data?.message || err?.message || "No se pudo iniciar sesión");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="container-app">
-      <div className="card max-w-sm mx-auto">
+    <div className="min-h-screen grid place-items-center bg-base-200 p-4">
+      <div className="card w-full max-w-md bg-base-100 shadow">
         <div className="card-body">
-          <h1 className="text-xl font-semibold">Acceso Staff</h1>
-          <p className="text-slate-600 text-sm">
-            Usa tu correo corporativo para ingresar al panel.
-          </p>
-
-          <form onSubmit={onSubmit} className="mt-4 space-y-3">
-            <label className="block">
-              <span className="text-sm font-medium">Correo</span>
+          <h1 className="card-title">Acceso Staff / Admin</h1>
+          <form onSubmit={onSubmit} className="grid gap-3">
+            <div className="form-control">
+              <label className="label"><span className="label-text">Email</span></label>
               <input
-                className="input mt-1"
+                className="input input-bordered"
                 type="email"
-                autoComplete="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tucorreo@negocio.com"
-                required
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="text-sm font-medium">Contraseña</span>
+            <div className="form-control">
+              <label className="label"><span className="label-text">Contraseña</span></label>
               <input
-                className="input mt-1"
+                className="input input-bordered"
                 type="password"
-                autoComplete="current-password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                required
               />
-            </label>
+            </div>
 
-            {err && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2">
-                {err}
-              </div>
-            )}
-
-            <button className="button button-primary w-full" disabled={loading}>
-              {loading ? "Ingresando…" : "Entrar"}
+            <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={loading}>
+              {loading ? "Ingresando…" : "Ingresar"}
             </button>
+
+            {!!msg && <div className="alert alert-warning"><span>{msg}</span></div>}
+
+            <div className="text-xs opacity-70 flex justify-between">
+              <Link to="/" className="link">Volver al inicio</Link>
+              <Link to="/portal" className="link">Acceso Clientes</Link>
+            </div>
           </form>
-
-          <div className="mt-3 text-center">
-            <button
-              type="button"
-              className="text-xs text-slate-500 underline"
-              onClick={() => alert("Contacta al administrador para recuperar acceso.")}
-            >
-              ¿Olvidaste tu contraseña?
-            </button>
-          </div>
         </div>
       </div>
     </div>
