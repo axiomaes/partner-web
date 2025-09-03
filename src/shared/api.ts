@@ -1,6 +1,7 @@
 // partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
 import { getToken } from "./auth";
+import type { UserRole } from "./auth";
 
 /**
  * ===========================================
@@ -80,12 +81,22 @@ type CreatedCustomer = { id: string; name: string; existed?: boolean };
 export const createCustomer = (name: string, phone: string) =>
   api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
 
-// Crear staff (usuario) — el backend asigna el negocio por JWT
-export const createStaff = (
-  email: string,
-  password: string,
-  role: "ADMIN" | "BARBER"
-) => api.post("/users", { email, password, role }).then((r) => r.data);
+/** ===== Usuarios (staff/admin) ===== */
+export type UserLite = { id: string; email: string; role: UserRole };
+
+// Listar usuarios
+export const listUsers = () =>
+  api.get("/users").then((r) =>
+    Array.isArray(r.data) ? (r.data as UserLite[]) : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
+  );
+
+// Crear usuario (alias de createStaff)
+export const createUser = (email: string, password: string, role: UserRole) =>
+  api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
+
+// Mantengo también el helper previo por compatibilidad
+export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
+  api.post("/users", { email, password, role }).then((r) => r.data);
 
 // Listar clientes
 export const listCustomers = () =>
@@ -95,9 +106,7 @@ export const listCustomers = () =>
 
 // Añadir visita (suma “puntos”)
 export const addVisit = (customerId: string, notes?: string) =>
-  api
-    .post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes })
-    .then((r) => r.data);
+  api.post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes }).then((r) => r.data);
 
 // Recompensas del cliente
 export const getCustomerRewards = (customerId: string) =>
@@ -118,7 +127,6 @@ export const publicCustomerQrUrl = (customerId: string) =>
 /**
  * ===========================================
  *  Helpers PORTAL (cliente con OTP)
- *  ⚠️ Ajusta las rutas si tu backend usa otras.
  * ===========================================
  */
 
