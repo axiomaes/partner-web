@@ -1,46 +1,50 @@
-import { PropsWithChildren } from "react";
+// partner-web/src/layout/AppLayout.tsx
 import { Link } from "react-router-dom";
+import { ReactNode } from "react";
+import { BRAND } from "@/shared/brand";
 
 type Props = {
   title?: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
+  children: ReactNode;
 };
 
-/**
- * AppLayout — Contenedor visual unificado para TODAS las pantallas.
- * - Navbar superior consistente
- * - Fondo/base de DaisyUI
- * - Contenedor central con padding y ancho máximo
- * - Título/subtítulo opcionales
- */
-export default function AppLayout({ children, title, subtitle }: PropsWithChildren<Props>) {
+export default function AppLayout({ title, subtitle, children }: Props) {
   return (
-    <div className="min-h-screen bg-base-200" data-theme="corporate">
-      {/* Navbar */}
-      <div className="navbar bg-base-100 border-b border-base-300">
-        <div className="flex-1">
-          <Link to="/" className="btn btn-ghost text-xl font-bold">
-            Axioma Loyalty
+    <div className="min-h-screen bg-base-200">
+      {/* Topbar */}
+      <header className="navbar bg-base-100 border-b">
+        <div className="flex-1 gap-3">
+          <Link to="/" className="btn btn-ghost gap-3 px-2">
+            <img
+              src={BRAND.logoUrl}
+              alt={BRAND.name}
+              className="h-6 w-auto sm:h-7"
+              loading="eager"
+              decoding="async"
+            />
+            <span className="font-semibold hidden sm:inline">{BRAND.shortName}</span>
           </Link>
         </div>
-        <div className="flex-none gap-2">
-          {/* Placeholder para futuro: avatar/usuario, switch de tema, etc. */}
+
+        <nav className="flex-none gap-1">
+          <Link to="/portal" className="btn btn-ghost btn-sm">Clientes</Link>
+          <Link to="/app" className="btn btn-ghost btn-sm">Staff</Link>
+          <Link to="/app/admin" className="btn btn-primary btn-sm">Admin</Link>
+        </nav>
+      </header>
+
+      {/* Page header */}
+      {(title || subtitle) && (
+        <div className="max-w-6xl mx-auto w-full px-4 pt-5">
+          {title && <h1 className="text-xl sm:text-2xl font-semibold">{BRAND.name} — {title}</h1>}
+          {subtitle && <p className="text-sm opacity-70 mt-1">{subtitle}</p>}
         </div>
-      </div>
+      )}
 
-      {/* Contenido */}
-      <main className="mx-auto w-full max-w-6xl p-4 md:p-6">
-        {(title || subtitle) && (
-          <header className="mb-4">
-            {title && <h1 className="text-2xl font-semibold">{title}</h1>}
-            {subtitle && <p className="text-base text-base-content/70">{subtitle}</p>}
-          </header>
-        )}
-
-        <section className="card bg-base-100 shadow-lg">
-          <div className="card-body">{children}</div>
-        </section>
-      </main>
+      {/* Content */}
+      <main className="max-w-6xl mx-auto w-full p-4">{children}</main>
     </div>
   );
 }
+
