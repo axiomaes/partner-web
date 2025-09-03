@@ -19,7 +19,7 @@ export default function Home() {
           <ul className="menu rounded-box">
             <li><Link to="/portal" className="justify-start">Acceso Clientes</Link></li>
             <li><Link to="/app" className="justify-start">Acceso Staff</Link></li>
-            <li><Link to="/login" className="justify-start">Administrador</Link></li>
+            <li><Link to="/app/admin" className="justify-start">Administrador</Link></li>
           </ul>
 
           <p className="menu-title mt-4">Información</p>
@@ -55,7 +55,7 @@ export default function Home() {
             <ul className="menu rounded-box mb-2">
               <li><Link to="/portal" onClick={() => setOpen(false)}>Acceso Clientes</Link></li>
               <li><Link to="/app" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
-              <li><Link to="/login" onClick={() => setOpen(false)}>Administrador</Link></li>
+              <li><Link to="/app/admin" onClick={() => setOpen(false)}>Administrador</Link></li>
             </ul>
 
             <p className="menu-title">Información</p>
@@ -93,10 +93,10 @@ export default function Home() {
                     Acceso Clientes
                   </button>
 
-                  {/* Pequeños: Staff / Admin (dejamos Link; los veremos después) */}
+                  {/* Pequeños: Staff / Admin */}
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
                     <Link to="/app" className="btn btn-outline h-20">Staff</Link>
-                    <Link to="/app/admin/users" className="btn btn-outline h-20">Administrador</Link>
+                    <Link to="/app/admin" className="btn btn-outline h-20">Administrador</Link>
                   </div>
                 </div>
               </div>
@@ -108,7 +108,7 @@ export default function Home() {
                     <h3 className="card-title">Hoy</h3>
                     <p className="text-sm opacity-70">Revisa citas, visitas y recompensas.</p>
                     <div className="card-actions justify-end">
-                      <Link to="/app" className="btn btn-sm btn-primary">Ir al panel</Link>
+                      <Link to="/app/admin" className="btn btn-sm btn-primary">Ir al panel</Link>
                     </div>
                   </div>
                 </div>
