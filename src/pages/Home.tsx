@@ -96,7 +96,7 @@ export default function Home() {
                   {/* Pequeños: Staff / Admin (dejamos Link; los veremos después) */}
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
                     <Link to="/app" className="btn btn-outline h-20">Staff</Link>
-                    <Link to="/login" className="btn btn-outline h-20">Administrador</Link>
+                    <Link to="/app/admin/users" className="btn btn-outline h-20">Administrador</Link>
                   </div>
                 </div>
               </div>
