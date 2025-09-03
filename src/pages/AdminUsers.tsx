@@ -5,17 +5,20 @@ import AppLayout from "@/layout/AppLayout";
 import { api } from "@/shared/api";
 import { useSession } from "@/shared/auth";
 
-type Role = "ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN";
-type User = {
-  id: string;
-  email: string;
-  role: Role;
-  isActive?: boolean;
-  createdAt?: string;
-};
+type Role = "BARBER" | "ADMIN" | "OWNER" | "SUPERADMIN";
+type User = { id: string; email: string; role: Role; isActive?: boolean; createdAt?: string };
 
 export default function AdminUsers() {
-  const { token } = useSession();
+  const { role: myRole } = useSession();
+
+  // Qué roles puede asignar el usuario actual (mirror de la regla del backend)
+  const assignableRoles: Role[] = useMemo(() => {
+    if (myRole === "SUPERADMIN") return ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"];
+    if (myRole === "OWNER") return ["BARBER", "OWNER"];
+    // ADMIN/BARBER: ninguno (solo lectura)
+    return [];
+  }, [myRole]);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [users, setUsers] = useState<User[]>([]);
@@ -24,32 +27,34 @@ export default function AdminUsers() {
   // form crear
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const [role, setRole] = useState<Role>("BARBER");
+  const [role, setRole] = useState<Role>(assignableRoles[0] ?? "BARBER");
   const [creating, setCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
 
+  useEffect(() => {
+    if (assignableRoles.length) setRole(assignableRoles[0]);
+  }, [assignableRoles]);
+
   const load = async () => {
-    if (!token) return;
     setLoading(true);
     setErr("");
     try {
       const r = await api.get("/users");
       setUsers(r.data as User[]);
     } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "Error cargando usuarios");
+      setErr(e?.response?.data?.message || e?.message || "Internal server error");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [token]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return users;
     return users.filter(u =>
-      (u.email || "").toLowerCase().includes(s) ||
-      (u.role || "").toLowerCase().includes(s)
+      (u.email || "").toLowerCase().includes(s) || (u.role || "").toLowerCase().includes(s)
     );
   }, [users, q]);
 
@@ -60,21 +65,12 @@ export default function AdminUsers() {
     try {
       await api.post("/users", { email: email.trim(), password: pass, role });
       setCreateMsg("✅ Usuario creado");
-      setEmail(""); setPass(""); setRole("BARBER");
+      setEmail(""); setPass("");
       await load();
     } catch (e: any) {
       setCreateMsg(`❌ ${e?.response?.data?.message || e?.message || "No se pudo crear"}`);
     } finally {
       setCreating(false);
-    }
-  };
-
-  const onToggleActive = async (id: string, active: boolean | undefined) => {
-    try {
-      await api.patch(`/users/${id}`, { isActive: !active });
-      await load();
-    } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "No se pudo actualizar");
     }
   };
 
@@ -98,6 +94,8 @@ export default function AdminUsers() {
     }
   };
 
+  const canWrite = assignableRoles.length > 0; // OWNER o SUPERADMIN
+
   return (
     <AppLayout title="Usuarios" subtitle="Gestión de cuentas y roles">
       <div className="grid lg:grid-cols-2 gap-6">
@@ -105,6 +103,13 @@ export default function AdminUsers() {
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title">Crear usuario</h2>
+
+            {!canWrite ? (
+              <div className="alert">
+                <span>Solo lectura. Contacta a un OWNER para crear o editar usuarios.</span>
+              </div>
+            ) : null}
+
             <form onSubmit={onCreate} className="grid gap-3">
               <div className="form-control">
                 <label className="label"><span className="label-text">Email</span></label>
@@ -112,6 +117,7 @@ export default function AdminUsers() {
                   className="input input-bordered"
                   type="email"
                   required
+                  disabled={!canWrite}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="usuario@tu-negocio.com"
@@ -123,6 +129,7 @@ export default function AdminUsers() {
                   className="input input-bordered"
                   type="password"
                   required
+                  disabled={!canWrite}
                   value={pass}
                   onChange={(e) => setPass(e.target.value)}
                   placeholder="Contraseña temporal"
@@ -133,15 +140,15 @@ export default function AdminUsers() {
                 <select
                   className="select select-bordered"
                   value={role}
+                  disabled={!canWrite}
                   onChange={(e) => setRole(e.target.value as Role)}
                 >
-                  <option value="BARBER">BARBER</option>
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="OWNER">OWNER</option>
-                  <option value="SUPERADMIN">SUPERADMIN</option>
+                  {assignableRoles.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
                 </select>
               </div>
-              <button className={`btn btn-primary ${creating ? "loading" : ""}`} disabled={creating}>
+              <button className={`btn btn-primary ${creating ? "loading" : ""}`} disabled={!canWrite || creating}>
                 {creating ? "Creando…" : "Crear usuario"}
               </button>
               {!!createMsg && (
@@ -149,9 +156,6 @@ export default function AdminUsers() {
                   <span>{createMsg}</span>
                 </div>
               )}
-              <div className="text-xs opacity-70">
-                Consejo: crea al menos 1 ADMIN (o OWNER) para acceder al Panel del Administrador.
-              </div>
             </form>
           </div>
         </div>
@@ -185,7 +189,6 @@ export default function AdminUsers() {
                     <tr>
                       <th>Email</th>
                       <th>Rol</th>
-                      <th>Estado</th>
                       <th className="w-1">Acciones</th>
                     </tr>
                   </thead>
@@ -197,30 +200,20 @@ export default function AdminUsers() {
                           <select
                             className="select select-bordered select-xs"
                             value={u.role}
+                            disabled={!canWrite}
                             onChange={(e) => onChangeRole(u.id, e.target.value as Role)}
                           >
-                            <option value="BARBER">BARBER</option>
-                            <option value="ADMIN">ADMIN</option>
-                            <option value="OWNER">OWNER</option>
-                            <option value="SUPERADMIN">SUPERADMIN</option>
+                            {/* Limitar opciones al rol del llamante */}
+                            {assignableRoles.includes(u.role) || assignableRoles.length
+                              ? assignableRoles.map(r => <option key={r} value={r}>{r}</option>)
+                              : <option value={u.role}>{u.role}</option>}
                           </select>
-                        </td>
-                        <td>
-                          <span className={`badge ${u.isActive === false ? "badge-ghost" : "badge-success"}`}>
-                            {u.isActive === false ? "Inactivo" : "Activo"}
-                          </span>
                         </td>
                         <td>
                           <div className="join join-vertical sm:join-horizontal">
                             <button
                               className="btn btn-xs btn-outline join-item"
-                              onClick={() => onToggleActive(u.id, u.isActive)}
-                              title="Activar/Desactivar"
-                            >
-                              {u.isActive === false ? "Activar" : "Desactivar"}
-                            </button>
-                            <button
-                              className="btn btn-xs btn-outline join-item"
+                              disabled={!canWrite}
                               onClick={() => onResetPassword(u.id)}
                               title="Resetear contraseña"
                             >
@@ -231,7 +224,7 @@ export default function AdminUsers() {
                       </tr>
                     ))}
                     {!filtered.length && (
-                      <tr><td colSpan={4} className="text-sm opacity-70 p-4">Sin resultados</td></tr>
+                      <tr><td colSpan={3} className="text-sm opacity-70 p-4">Sin resultados</td></tr>
                     )}
                   </tbody>
                 </table>
