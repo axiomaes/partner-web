@@ -23,7 +23,7 @@ import CustomersPage from "@/pages/Customers";
 import CustomersNew from "@/pages/CustomersNew";
 import CustomerDetail from "@/pages/CustomerDetail";
 import StaffNew from "@/pages/StaffNew";
-import AdminPanel from "@/pages/AdminPanel"; // 👈 NUEVO
+import AdminPanel from "@/pages/AdminPanel";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -63,24 +63,24 @@ const router = createBrowserRouter([
     path: "/app",
     element: <Outlet />, // necesario para renderizar children
     children: [
-      // 👉 Por defecto, enviar al Admin Panel
+      // Por defecto, enviar al Admin Panel
       { index: true, element: <Navigate to="admin" replace /> },
 
-      // Admin Panel (solo ADMIN)
+      // Admin Panel (ADMIN, OWNER, SUPERADMIN)
       {
         path: "admin",
         element: (
-          <ProtectedRoute roles={["ADMIN"]}>
+          <ProtectedRoute roles={["ADMIN", "OWNER", "SUPERADMIN"]}>
             <AdminPanel />
           </ProtectedRoute>
         ),
       },
 
-      // Clientes (ADMIN y BARBER)
+      // Clientes (ADMIN, BARBER, OWNER, SUPERADMIN)
       {
         path: "customers",
         element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+          <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
             <CustomersPage />
           </ProtectedRoute>
         ),
@@ -88,7 +88,7 @@ const router = createBrowserRouter([
       {
         path: "customers/new",
         element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+          <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
             <CustomersNew />
           </ProtectedRoute>
         ),
@@ -96,26 +96,26 @@ const router = createBrowserRouter([
       {
         path: "customers/:id",
         element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+          <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
             <CustomerDetail />
           </ProtectedRoute>
         ),
       },
 
-      // Staff (solo ADMIN)
+      // Staff (ADMIN, OWNER, SUPERADMIN)
       {
         path: "staff/new",
         element: (
-          <ProtectedRoute roles={["ADMIN"]}>
+          <ProtectedRoute roles={["ADMIN", "OWNER", "SUPERADMIN"]}>
             <StaffNew />
           </ProtectedRoute>
         ),
       },
-      // Versión con layout interno (si necesitas)
+      // Versión con layout interno
       {
         path: "staff/checkin",
         element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+          <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
             <StaffCheckin />
           </ProtectedRoute>
         ),
@@ -125,7 +125,7 @@ const router = createBrowserRouter([
       {
         path: "portal/points",
         element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+          <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
             <PortalPoints />
           </ProtectedRoute>
         ),
