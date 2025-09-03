@@ -9,17 +9,21 @@ import {
   useParams,
 } from "react-router-dom";
 
-// Público (sin sidebar)
+// Públicas
 import Home from "@/pages/Home";
 import PortalLogin from "@/portal/PortalLogin";
 import PortalPoints from "@/portal/PortalPoints";
 import StaffCheckin from "@/pages/StaffCheckin";
+import LoginStaff from "@/pages/LoginStaff";
+import Unauthorized from "@/pages/Unauthorized";
 
-// Panel (con layout unificado por página)
+// Panel
 import CustomersPage from "@/pages/Customers";
 import CustomersNew from "@/pages/CustomersNew";
-import StaffNew from "@/pages/StaffNew";
 import CustomerDetail from "@/pages/CustomerDetail";
+import StaffNew from "@/pages/StaffNew";
+
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 import "./index.css";
 
@@ -38,43 +42,97 @@ function LegacyStaffNewToApp() {
 }
 
 const router = createBrowserRouter([
-  // HOME bonito en "/"
+  // Home
   { path: "/", element: <Home /> },
+
+  // Login staff y página de acceso denegado
+  { path: "/login", element: <LoginStaff /> },
+  { path: "/unauthorized", element: <Unauthorized /> },
 
   // Portal cliente (público)
   { path: "/portal", element: <PortalLogin /> },
   { path: "/portal/points", element: <PortalPoints /> },
 
-  // Check-in Staff (público: para kiosko/QR directo)
+  // Check-in Staff (público para QR/kiosko)
   { path: "/staff/checkin", element: <StaffCheckin /> },
 
-  // Dashboard interno en /app/*
+  // Panel interno en /app/*
   {
     path: "/app",
     children: [
-      // Dashboard → Clientes por defecto
-      { index: true, element: <CustomersPage /> },
+      // Dashboard → lista de clientes por defecto
+      {
+        index: true,
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <CustomersPage />
+          </ProtectedRoute>
+        ),
+      },
 
       // Clientes
-      { path: "customers", element: <CustomersPage /> },
-      { path: "customers/new", element: <CustomersNew /> },
-      { path: "customers/:id", element: <CustomerDetail /> },
+      {
+        path: "customers",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <CustomersPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "customers/new",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <CustomersNew />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "customers/:id",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <CustomerDetail />
+          </ProtectedRoute>
+        ),
+      },
 
       // Staff
-      { path: "staff/new", element: <StaffNew /> },
-      { path: "staff/checkin", element: <StaffCheckin /> }, // ← versión con layout unificado
+      {
+        path: "staff/new",
+        element: (
+          <ProtectedRoute roles={["ADMIN"]}>
+            <StaffNew />
+          </ProtectedRoute>
+        ),
+      },
+      // versión de checkin con layout del panel (si la usas)
+      {
+        path: "staff/checkin",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <StaffCheckin />
+          </ProtectedRoute>
+        ),
+      },
 
-      // Portal (vista interna de puntos para demo/soporte)
-      { path: "portal/points", element: <PortalPoints /> }, // ← misma pantalla, con AppLayout si la página lo usa
+      // Portal points dentro del panel (opcional)
+      {
+        path: "portal/points",
+        element: (
+          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
+            <PortalPoints />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
 
-  // Redirecciones antiguas (por si quedaron marcadores)
+  // Redirecciones antiguas
   { path: "/customers/new", element: <LegacyCustomersNewToApp /> },
   { path: "/customers/:id", element: <LegacyCustomerToApp /> },
   { path: "/staff/new", element: <LegacyStaffNewToApp /> },
 
-  // Fallback 404 básico: vuelve al Home
+  // Fallback
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
 
