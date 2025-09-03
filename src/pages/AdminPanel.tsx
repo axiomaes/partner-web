@@ -12,43 +12,23 @@ type Customer = {
   email?: string | null;
 };
 
-function NeedLoginCard() {
-  return (
-    <div className="min-h-[50vh] grid place-items-center">
-      <div className="card bg-base-100 shadow">
-        <div className="card-body">
-          <h2 className="card-title">Necesitas iniciar sesión</h2>
-          <p>Para acceder al Panel del Administrador debes iniciar sesión con una cuenta de administrador.</p>
-          <div className="card-actions justify-end">
-            <Link to="/login" className="btn btn-primary">Ir a login</Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NoPermissionCard() {
-  return (
-    <div className="min-h-[50vh] grid place-items-center">
-      <div className="card bg-base-100 shadow">
-        <div className="card-body">
-          <h2 className="card-title">No autorizado</h2>
-          <p>No tienes permisos para esta sección. Pide a un administrador que te asigne rol de <b>ADMIN</b> / <b>OWNER</b> / <b>SUPERADMIN</b>.</p>
-          <div className="card-actions justify-end">
-            <Link to="/app/staff/checkin" className="btn">Ir a Staff</Link>
-            <Link to="/login" className="btn btn-ghost">Cambiar de usuario</Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+type WaStatus = {
+  enabled: boolean;
+  from: string | null;
+  ratePerMinute: number | null;
+  dailyCap: number | null;
+  monthlyCap: number | null;
+};
 
 export default function AdminPanel() {
   const nav = useNavigate();
-  const { role, token } = useSession();
+  const { role } = useSession();
   const admin = isAdmin(role);
+
+  // Guard “blando”: si no es admin, lo mando a inicio
+  useEffect(() => {
+    if (!admin) nav("/app", { replace: true });
+  }, [admin, nav]);
 
   // ----- Estado: quick points -----
   const [qpPhone, setQpPhone] = useState("+34");
@@ -77,24 +57,14 @@ export default function AdminPanel() {
 
   useEffect(() => {
     let mounted = true;
-    if (!token) return; // sin token no llamamos a la API
-
     setLoading(true);
     setErr("");
-
     api.get("/customers")
       .then(r => { if (mounted) setCustomers(r.data as Customer[]); })
-      .catch(e => {
-        if (!mounted) return;
-        const msg = e?.response?.status === 401
-          ? "No autorizado. Inicia sesión de administrador."
-          : e?.response?.data?.message || e?.message || "Error cargando clientes";
-        setErr(msg);
-      })
+      .catch(e => { if (mounted) setErr(e?.response?.data?.message || e?.message || "Error cargando clientes"); })
       .finally(() => { if (mounted) setLoading(false); });
-
     return () => { mounted = false; };
-  }, [token]);
+  }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -119,22 +89,30 @@ export default function AdminPanel() {
     }
   };
 
-  // === Guards visuales (sin redirección dura para evitar bucles) ===
-  if (!token) return (
-    <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
-      <NeedLoginCard />
-    </AppLayout>
+  // ----- Estado: WhatsApp (status sólo lectura) -----
+  const [wa, setWa] = useState<WaStatus | null>(null);
+  const [waError, setWaError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    api.get("/customers/wa/status", { validateStatus: () => true })
+      .then(r => {
+        if (!mounted) return;
+        if (r.status >= 200 && r.status < 300) setWa(r.data as WaStatus);
+        else setWaError(r.data?.message || "No disponible");
+      })
+      .catch(e => { if (mounted) setWaError(e?.message || "No disponible"); });
+    return () => { mounted = false; };
+  }, []);
+
+  const waBadge = wa?.enabled ? (
+    <span className="badge badge-success">Activado</span>
+  ) : (
+    <span className="badge">Desactivado</span>
   );
 
-  if (!admin) return (
-    <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
-      <NoPermissionCard />
-    </AppLayout>
-  );
-
-  // === Render normal para ADMIN ===
   return (
-    <AppLayout title="Panel del Administrador" subtitle="Herramientas de negocio">
+    <AppLayout title="La Cubierta Barbería — Panel del Administrador" subtitle="Herramientas de negocio">
       <div className="grid lg:grid-cols-2 gap-6">
         {/* QUICK POINTS */}
         <div className="card bg-base-100 shadow-sm">
@@ -177,8 +155,35 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* CLIENTES */}
+        {/* WHATSAPP STATUS */}
         <div className="card bg-base-100 shadow-sm">
+          <div className="card-body">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="card-title">WhatsApp</h2>
+              {wa ? waBadge : <span className="loading loading-ring loading-sm" />}
+            </div>
+            {waError ? (
+              <div className="alert alert-warning mt-2"><span>{waError}</span></div>
+            ) : wa ? (
+              <>
+                <div className="text-sm">
+                  <div><span className="opacity-70">Emisor:</span> {wa.from || "—"}</div>
+                  <div><span className="opacity-70">Límite diario:</span> {wa.dailyCap ?? "—"}</div>
+                  <div><span className="opacity-70">Tasa por minuto:</span> {wa.ratePerMinute ?? "—"}</div>
+                  <div><span className="opacity-70">Límite mensual:</span> {wa.monthlyCap ?? "—"}</div>
+                </div>
+                <div className="text-xs opacity-70 mt-2">
+                  El envío se controla por variables de entorno (CapRover): WA_ENABLED / ALLOW_WA_SEND / ALLOW_WA_RESEND.
+                </div>
+              </>
+            ) : (
+              <div className="mt-2 text-sm opacity-70">Cargando estado…</div>
+            )}
+          </div>
+        </div>
+
+        {/* CLIENTES */}
+        <div className="card bg-base-100 shadow-sm lg:col-span-2">
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h2 className="card-title">Clientes</h2>
@@ -247,7 +252,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* STAFF – placeholder */}
+        {/* STAFF – placeholder (cuando tengas API de Users) */}
         <div className="card bg-base-100 shadow-sm lg:col-span-2">
           <div className="card-body">
             <h2 className="card-title">Equipo (staff)</h2>
@@ -256,7 +261,7 @@ export default function AdminPanel() {
               podemos conectar este bloque de inmediato.
             </p>
             <div className="join">
-              <Link to="/app/users" className="btn btn-ghost join-item">Ir a Usuarios (si existe)</Link>
+              <Link to="/app/users" className="btn btn-ghost join-item">Ir a Usuarios</Link>
               <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
             </div>
           </div>
