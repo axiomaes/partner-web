@@ -29,7 +29,7 @@ import CustomersNew from "@/pages/CustomersNew";
 import CustomerDetail from "@/pages/CustomerDetail";
 import StaffNew from "@/pages/StaffNew";
 import AdminPanel from "@/pages/AdminPanel";
-import AdminUsers from "@/pages/AdminUsers"; // 👈 NUEVO
+import AdminUsers from "@/pages/AdminUsers";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -53,10 +53,10 @@ const router = createBrowserRouter([
   // Home
   { path: "/", element: <Home /> },
 
-  // Legales (públicas)
-  { path: "/Legal/privacidad", element: <Privacidad /> },
-  { path: "/Legal/aviso", element: <AvisoLegal /> },
-  { path: "/Legal/cookies", element: <Cookies /> },
+  // Legales (públicas) -> paths en minúsculas
+  { path: "/legal/privacidad", element: <Privacidad /> },
+  { path: "/legal/aviso", element: <AvisoLegal /> },
+  { path: "/legal/cookies", element: <Cookies /> },
 
   // Login staff y acceso denegado
   { path: "/login", element: <LoginStaff /> },
@@ -69,18 +69,22 @@ const router = createBrowserRouter([
   // Check-in Staff (público para QR/kiosko)
   { path: "/staff/checkin", element: <StaffCheckin /> },
 
-  // Panel interno en /app/*
+  // Panel interno en /app/* (protegido a nivel de rama)
   {
     path: "/app",
-    element: <Outlet />, // necesario para renderizar children
+    element: (
+      <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER", "SUPERADMIN"]}>
+        <Outlet />
+      </ProtectedRoute>
+    ),
     children: [
       // Por defecto, enviar al Admin Panel
       { index: true, element: <Navigate to="admin" replace /> },
 
-      // Admin Panel (deja este sin ProtectedRoute si sigues usando guard interno)
+      // Admin Panel (ya protegido por el wrapper superior)
       { path: "admin", element: <AdminPanel /> },
 
-      // Usuarios (ADMIN, OWNER, SUPERADMIN)
+      // Usuarios (roles más restrictivos)
       {
         path: "users",
         element: (
@@ -90,7 +94,7 @@ const router = createBrowserRouter([
         ),
       },
 
-      // Clientes (ADMIN, BARBER, OWNER, SUPERADMIN)
+      // Clientes
       {
         path: "customers",
         element: (
@@ -125,7 +129,8 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      // Versión con layout interno
+
+      // Versión con layout interno (protegida)
       {
         path: "staff/checkin",
         element: (
