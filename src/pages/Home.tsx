@@ -106,7 +106,7 @@ export default function Home() {
                     <h3 className="card-title">Hoy</h3>
                     <p className="text-sm opacity-70">Revisa citas, visitas y recompensas.</p>
                     <div className="card-actions justify-end">
-                      <Link to="/app/customers" className="btn btn-sm btn-primary">Ir al panel</Link>
+                      <Link to="/app/admin" className="btn btn-sm btn-primary">Ir al panel</Link>
                     </div>
                   </div>
                 </div>
