@@ -135,14 +135,13 @@ export default function Home() {
 
           {/* Footer */}
          <footer className="text-center text-xs opacity-70 py-8 space-x-3">
-            © {new Date().getFullYear()} Axioma Loyalty · La Cubierta Barbería
+            © {new Date().getFullYear()} Axioma Loyalty · La Cubierta Barbería 
             <a className="link" href="/legal/privacidad">Privacidad</a>
             <span>·</span>
             <a className="link" href="/legal/aviso">Aviso legal</a>
             <span>·</span>
             <a className="link" href="/legal/cookies">Cookies</a>
           </footer>
-
         </div>
       </main>
     </div>
