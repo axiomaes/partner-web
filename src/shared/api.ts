@@ -224,6 +224,6 @@ export function addVisitByPhone(phone: string, notes?: string) {
 
 // Reenviar QR por WhatsApp (sólo ADMIN; respeta env del backend)
 export function resendCustomerQr(customerId: string) {
-  // <-- FIX: coincide con @Post(':id/qr/send') del backend
   return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
+
