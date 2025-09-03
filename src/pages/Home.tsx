@@ -18,7 +18,7 @@ export default function Home() {
           <p className="menu-title">Accesos</p>
           <ul className="menu rounded-box">
             <li><Link to="/portal" className="justify-start">Acceso Clientes</Link></li>
-            <li><Link to="/app" className="justify-start">Acceso Staff</Link></li>
+            <li><Link to="/app/staff/checkin" className="justify-start">Acceso Staff</Link></li>
             <li><Link to="/app/admin" className="justify-start">Administrador</Link></li>
           </ul>
 
@@ -54,7 +54,7 @@ export default function Home() {
             <p className="menu-title">Accesos</p>
             <ul className="menu rounded-box mb-2">
               <li><Link to="/portal" onClick={() => setOpen(false)}>Acceso Clientes</Link></li>
-              <li><Link to="/app" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
+              <li><Link to="/app/staff/checkin" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
               <li><Link to="/app/admin" onClick={() => setOpen(false)}>Administrador</Link></li>
             </ul>
 
@@ -95,7 +95,7 @@ export default function Home() {
 
                   {/* Pequeños: Staff / Admin */}
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
-                    <Link to="/app" className="btn btn-outline h-20">Staff</Link>
+                    <Link to="/app/staff/checkin" className="btn btn-outline h-20">Staff</Link>
                     <Link to="/app/admin" className="btn btn-outline h-20">Administrador</Link>
                   </div>
                 </div>
