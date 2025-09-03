@@ -23,7 +23,9 @@ export default function AppLayout({ title, subtitle, children }: Props) {
               loading="eager"
               decoding="async"
             />
-            <span className="font-semibold hidden sm:inline">{BRAND.shortName}</span>
+            <span className="font-semibold hidden sm:inline">
+              {BRAND.shortName}
+            </span>
           </Link>
         </div>
 
@@ -37,14 +39,42 @@ export default function AppLayout({ title, subtitle, children }: Props) {
       {/* Page header */}
       {(title || subtitle) && (
         <div className="max-w-6xl mx-auto w-full px-4 pt-5">
-          {title && <h1 className="text-xl sm:text-2xl font-semibold">{BRAND.name} — {title}</h1>}
+          {title && (
+            <h1 className="text-xl sm:text-2xl font-semibold">
+              {BRAND.name} — {title}
+            </h1>
+          )}
           {subtitle && <p className="text-sm opacity-70 mt-1">{subtitle}</p>}
         </div>
       )}
 
       {/* Content */}
       <main className="max-w-6xl mx-auto w-full p-4">{children}</main>
+
+      {/* Footer */}
+      <footer className="max-w-6xl mx-auto w-full px-4 pb-8">
+        <div className="mt-8 border-t border-base-300 pt-6 text-sm text-base-content/70">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span>
+              © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}
+            </span>
+
+            <nav className="flex flex-wrap items-center gap-x-4">
+              <Link to="/legal/privacidad" className="link link-primary link-hover">
+                Privacidad
+              </Link>
+              <span className="text-base-content/40">·</span>
+              <Link to="/legal/aviso-legal" className="link link-primary link-hover">
+                Aviso legal
+              </Link>
+              <span className="text-base-content/40">·</span>
+              <Link to="/legal/cookies" className="link link-primary link-hover">
+                Cookies
+              </Link>
+            </nav>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
-
