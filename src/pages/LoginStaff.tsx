@@ -1,24 +1,22 @@
+// partner-web/src/pages/LoginStaff.tsx
 import { useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
 import { saveSession } from "@/shared/session";
 
-type Role = "ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN";
-type LoginResponse = {
-  token: string;
-  user: { id: string | number; name?: string; email: string; role: Role };
-};
+type ApiUser = { id: string; name: string; email: string; role: string };
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
-const DEV_ENABLED = String(import.meta.env.VITE_DEV_LOGIN ?? "true") === "true";
-const DEV_EMAIL =
-  import.meta.env.VITE_DEV_SUPERADMIN_EMAIL || "admin@axioma-creativa.es";
-const DEV_PASS = import.meta.env.VITE_DEV_SUPERADMIN_PASS || "Admin123!";
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+// Puedes sobreescribir las rutas con VITE_API_AUTH_PATHS="/auth/login,/api/auth/login,/login"
+const AUTH_PATHS: string[] = (import.meta.env.VITE_API_AUTH_PATHS ||
+  "/auth/login,/api/auth/login,/login")
+  .split(",")
+  .map(p => p.trim())
+  .filter(Boolean);
 
 export default function LoginStaff() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const nav = useNavigate();
@@ -29,85 +27,93 @@ export default function LoginStaff() {
     nav(to, { replace: true });
   };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMsg("");
+  async function tryLogin(): Promise<{ token: string; user: ApiUser }> {
+    const body = JSON.stringify({ email, password });
 
-    const emailNorm = email.trim().toLowerCase();
-    const passNorm = password.trim();
-
-    if (!emailNorm || !passNorm) {
-      setMsg("Completa email y contraseña.");
-      return;
-    }
-
-    setLoading(true);
-
-    // 1) Intento real contra API
-    if (API_BASE) {
+    // Intentamos en cadena las posibles rutas de auth
+    for (const path of AUTH_PATHS) {
+      const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
       try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 12000);
-
-        const res = await fetch(`${API_BASE}/auth/login`, {
+        const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: emailNorm, password: passNorm }),
-          signal: ctrl.signal,
+          body,
         });
 
-        clearTimeout(t);
-
-        if (res.ok) {
-          const data = (await res.json()) as LoginResponse;
-          const u = data.user ?? ({} as LoginResponse["user"]);
-          saveSession(
-            {
-              id: String(u.id ?? "unknown"),
-              name: u.name ?? emailNorm,
-              email: u.email ?? emailNorm,
-              role: (u.role as Role) ?? "ADMIN",
-            },
-            data.token
-          );
-          setLoading(false);
-          return afterLogin();
+        if (res.status === 404) {
+          // Ruta no existe → probamos la siguiente
+          continue;
         }
 
-        if (res.status === 401 || res.status === 403) {
-          // sigue a bypass si está habilitado
-        } else {
-          setMsg(`No se pudo iniciar sesión (código ${res.status}).`);
-          setLoading(false);
-          return;
+        if (res.status === 401) {
+          throw new Error("Credenciales inválidas.");
         }
-      } catch (err: any) {
-        if (err?.name === "AbortError") {
-          setMsg("Tiempo de espera agotado. Intenta de nuevo.");
-        } else {
-          setMsg("Servidor no disponible. Revisa tu conexión.");
+
+        if (!res.ok) {
+          throw new Error(`Error del servidor (código ${res.status}).`);
         }
-        // seguirá al bypass si está activo
+
+        // Éxito
+        return await res.json();
+      } catch (e) {
+        // Si fue 404 ya se continúa; otros errores se propagan al finalizar el bucle
+        if ((e as Error).message.includes("404")) continue;
+        // seguimos intentando otras rutas; si ninguna sirve, lanzamos el último error
       }
     }
 
-    // 2) Bypass dev opcional (solo si está habilitado)
-    if (DEV_ENABLED && emailNorm === DEV_EMAIL && passNorm === DEV_PASS) {
+    throw new Error(
+      "No se encontró el endpoint de autenticación en el API (404). " +
+        "Revisa VITE_API_BASE o define VITE_API_AUTH_PATHS."
+    );
+  }
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
+
+    try {
+      // 1) intento real contra API (con fallbacks)
+      const data = await tryLogin();
+      const user = data.user ?? ({} as ApiUser);
+
       saveSession(
         {
-          id: "dev-superadmin",
-          name: "Super Admin",
-          email: emailNorm,
-          role: "SUPERADMIN",
+          id: String(user.id ?? "unknown"),
+          name: user.name ?? "",
+          email: user.email ?? email,
+          role: user.role ?? "ADMIN",
         },
-        "dev-token"
+        data.token
       );
-      setLoading(false);
-      return afterLogin();
-    }
+      afterLogin();
+      return;
+    } catch (err: any) {
+      // 2) bypass DEV opcional
+      const devOn = String(import.meta.env.VITE_DEV_LOGIN || "").toLowerCase() === "true";
+      const DEV_EMAIL =
+        import.meta.env.VITE_DEV_SUPERADMIN_EMAIL || "admin@axioma-creativa.es";
+      const DEV_PASS = import.meta.env.VITE_DEV_SUPERADMIN_PASS || "admin123";
 
-    setMsg("Email o contraseña incorrectos.");
-    setLoading(false);
+      if (devOn && email === DEV_EMAIL && password === DEV_PASS) {
+        saveSession(
+          {
+            id: "dev-superadmin",
+            name: "Super Admin",
+            email,
+            role: "SUPERADMIN",
+          },
+          "dev-token"
+        );
+        afterLogin();
+        return;
+      }
+
+      setMsg(err?.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -119,65 +125,41 @@ export default function LoginStaff() {
             <h1 className="text-lg font-semibold">Acceso Staff</h1>
           </div>
 
-          <form className="grid gap-3" onSubmit={onSubmit} noValidate>
+          <form className="grid gap-3" onSubmit={onSubmit}>
             <label className="form-control">
               <span className="label-text">Email</span>
               <input
                 className="input input-bordered"
                 type="email"
-                placeholder="correo@tu-negocio.com"
+                placeholder="email"
                 autoFocus
-                autoComplete="username"
                 value={email}
-                disabled={loading}
                 onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </label>
 
             <label className="form-control">
               <span className="label-text">Contraseña</span>
-              <div className="join w-full">
-                <input
-                  className="input input-bordered join-item w-full"
-                  type={showPwd ? "text" : "password"}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  value={password}
-                  disabled={loading}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost join-item"
-                  onClick={() => setShowPwd((v) => !v)}
-                  aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                  disabled={loading}
-                >
-                  {showPwd ? "🙈" : "👁️"}
-                </button>
-              </div>
+              <input
+                className="input input-bordered"
+                type="password"
+                placeholder="contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
             </label>
 
-            <button
-              className={`btn btn-primary ${loading ? "loading" : ""}`}
-              disabled={loading}
-              aria-busy={loading}
-            >
+            <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={loading}>
               Entrar
             </button>
           </form>
 
-          {!!msg && (
-            <div className="alert alert-warning mt-2 text-sm">
-              {msg}
-            </div>
-          )}
+          {!!msg && <div className="alert alert-warning mt-3 text-sm">{msg}</div>}
 
           <div className="mt-2 text-xs opacity-70">
-            ¿Eres cliente?{" "}
-            <Link to="/portal" className="link">
-              Ir al Portal
-            </Link>
+            ¿Eres cliente? <Link to="/portal" className="link">Ir al Portal</Link>
           </div>
         </div>
       </div>
