@@ -14,6 +14,7 @@ const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
 function computeBaseURL(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
   if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") return viteEnv;
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host.endsWith(".axioma-creativa.es")) return PROD_API;
@@ -21,15 +22,21 @@ function computeBaseURL(): string {
   return "http://localhost:3000";
 }
 
-const baseURL = computeBaseURL();
+export const baseURL = computeBaseURL();
 
 /** Instancia para STAFF/ADMIN (token de panel) */
-export const api: AxiosInstance = axios.create({ baseURL });
-api.defaults.headers.common["Content-Type"] = "application/json";
+export const api: AxiosInstance = axios.create({
+  baseURL,
+  timeout: 15000,
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
+});
+
 api.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
   const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (token && typeof token === "string" && token.trim() !== "") {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   config.headers = headers;
   return config;
 });
@@ -59,8 +66,12 @@ export function clearPortalSession() {
 }
 
 /** Instancia para PORTAL (usa token del cliente) */
-export const portalApi: AxiosInstance = axios.create({ baseURL });
-portalApi.defaults.headers.common["Content-Type"] = "application/json";
+export const portalApi: AxiosInstance = axios.create({
+  baseURL,
+  timeout: 15000,
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
+});
+
 portalApi.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
   const p = loadPortalSession();
@@ -100,9 +111,7 @@ export const createStaff = (email: string, password: string, role: "ADMIN" | "BA
 
 // Listar clientes
 export const listCustomers = () =>
-  api.get("/customers").then((r) =>
-    Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []
-  );
+  api.get("/customers").then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
 // Añadir visita (suma “puntos”)
 export const addVisit = (customerId: string, notes?: string) =>
