@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.85.5",
+    "@yudiel/react-qr-scanner": "^2.3.1",
     "axios": "^1.11.0",
     "lucide-react": "^0.542.0",
     "qrcode.react": "^4.2.0",
