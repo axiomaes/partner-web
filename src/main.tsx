@@ -18,6 +18,11 @@ import StaffCheckin from "@/pages/StaffCheckin";
 import LoginStaff from "@/pages/LoginStaff";
 import Unauthorized from "@/pages/Unauthorized";
 
+// Legales (públicas)
+import Privacidad from "@/pages/legal/Privacidad";
+import AvisoLegal from "@/pages/legal/AvisoLegal";
+import Cookies from "@/pages/legal/Cookies";
+
 // Panel
 import CustomersPage from "@/pages/Customers";
 import CustomersNew from "@/pages/CustomersNew";
@@ -47,6 +52,11 @@ function LegacyStaffNewToApp() {
 const router = createBrowserRouter([
   // Home
   { path: "/", element: <Home /> },
+
+  // Legales (públicas)
+  { path: "/legal/privacidad", element: <Privacidad /> },
+  { path: "/legal/aviso", element: <AvisoLegal /> },
+  { path: "/legal/cookies", element: <Cookies /> },
 
   // Login staff y acceso denegado
   { path: "/login", element: <LoginStaff /> },
