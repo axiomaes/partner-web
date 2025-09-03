@@ -7,7 +7,29 @@ export default function Home() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const nav = useNavigate();
+
+  // Cierra el drawer al navegar
   useEffect(() => setOpen(false), [pathname]);
+
+  // Evita scroll del body cuando el drawer está abierto
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = original || "";
+    return () => {
+      document.body.style.overflow = original || "";
+    };
+  }, [open]);
+
+  // Cerrar con ESC
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   return (
     <div className="min-h-screen bg-base-200 flex">
@@ -42,6 +64,8 @@ export default function Home() {
               className="btn btn-ghost btn-square"
               onClick={() => setOpen(true)}
               aria-label="Abrir menú"
+              aria-controls="mobile-drawer"
+              aria-expanded={open}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
             </button>
@@ -53,10 +77,19 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Drawer móvil */}
       {open && (
-        <div className="md:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-80 bg-base-100 shadow-xl p-4">
+        <div className="md:hidden fixed inset-0 z-50" id="mobile-drawer" role="dialog" aria-modal="true">
+          {/* Overlay oscuro + blur */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+            onClick={() => setOpen(false)}
+          />
+          {/* Panel */}
+          <aside
+            className="absolute left-0 top-0 h-full w-[85%] max-w-80 bg-base-100 shadow-2xl border-r border-base-300 p-4
+                       translate-x-0 transition-transform duration-200 will-change-transform"
+          >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm opacity-70">{BRAND.shortName}</span>
               <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Cerrar">✕</button>
@@ -89,16 +122,10 @@ export default function Home() {
                   <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
                   <h1 className="text-3xl font-bold">{BRAND.name}</h1>
                 </div>
-                <p className="opacity-90 mt-2">
-                  Agenda, fidelización y mensajería en un mismo lugar.
-                </p>
+                <p className="opacity-90 mt-2">Agenda, fidelización y mensajería en un mismo lugar.</p>
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => nav("/portal")}
-                    className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
-                  >
+                  <button type="button" onClick={() => nav("/portal")} className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg">
                     Acceso Clientes
                   </button>
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
@@ -138,27 +165,17 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Footer propio de Home */}
-          <footer className="mt-8 border-t border-base-300 pt-6">
-            <div className="text-sm text-base-content/70 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-              <span>© {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}</span>
-              <nav className="flex items-center gap-x-4">
-                <Link to="/legal/privacidad" className="link link-primary link-hover">
-                  Privacidad
-                </Link>
-                <span className="text-base-content/40">·</span>
-                <Link to="/legal/aviso-legal" className="link link-primary link-hover">
-                  Aviso legal
-                </Link>
-                <span className="text-base-content/40">·</span>
-                <Link to="/legal/cookies" className="link link-primary link-hover">
-                  Cookies
-                </Link>
-              </nav>
-            </div>
+          <footer className="text-center text-xs opacity-70 py-8 space-x-3">
+            <span>© {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}</span>
+            <a className="link" href="/legal/privacidad">Privacidad</a>
+            <span>·</span>
+            <a className="link" href="/legal/aviso">Aviso legal</a>
+            <span>·</span>
+            <a className="link" href="/legal/cookies">Cookies</a>
           </footer>
         </div>
       </main>
     </div>
   );
 }
+
