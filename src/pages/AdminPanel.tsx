@@ -13,11 +13,11 @@ type Customer = {
 };
 
 type WaStatus = {
-  enabled: boolean;
-  from: string | null;
-  ratePerMinute: number | null;
-  dailyCap: number | null;
-  monthlyCap: number | null;
+  enabled?: boolean;
+  from?: string | null;
+  dailyLimit?: number | null;
+  ratePerMinute?: number | null;
+  monthlyCap?: number | null;
 };
 
 export default function AdminPanel() {
@@ -49,6 +49,23 @@ export default function AdminPanel() {
     }
   };
 
+  // ----- Estado: WhatsApp (solo info; sin nota de variables) -----
+  const [wa, setWa] = useState<WaStatus | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    api
+      .get("/wa/status", { validateStatus: () => true })
+      .then((r) => {
+        if (!mounted) return;
+        if (r.status >= 200 && r.status < 300) setWa(r.data as WaStatus);
+        else setWa(null);
+      })
+      .catch(() => mounted && setWa(null));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // ----- Estado: clientes -----
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,57 +76,77 @@ export default function AdminPanel() {
     let mounted = true;
     setLoading(true);
     setErr("");
-    api.get("/customers")
-      .then(r => { if (mounted) setCustomers(r.data as Customer[]); })
-      .catch(e => { if (mounted) setErr(e?.response?.data?.message || e?.message || "Error cargando clientes"); })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
+    api
+      .get("/customers")
+      .then((r) => {
+        if (mounted) setCustomers(r.data as Customer[]);
+      })
+      .catch((e) => {
+        if (mounted) setErr(e?.response?.data?.message || e?.message || "Error cargando clientes");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return customers;
-    return customers.filter(c =>
-      (c.name || "").toLowerCase().includes(s) ||
-      (c.phone || "").toLowerCase().includes(s) ||
-      (c.email || "").toLowerCase().includes(s)
+    return customers.filter(
+      (c) =>
+        (c.name || "").toLowerCase().includes(s) ||
+        (c.phone || "").toLowerCase().includes(s) ||
+        (c.email || "").toLowerCase().includes(s),
     );
   }, [customers, q]);
 
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const onResend = async (id: string) => {
-    setResendMsg(m => ({ ...m, [id]: "Enviando…" }));
+    setResendMsg((m) => ({ ...m, [id]: "Enviando…" }));
     try {
       const r = await resendCustomerQr(id);
-      if (r?.queued) setResendMsg(m => ({ ...m, [id]: "✅ Enviado/encolado" }));
-      else setResendMsg(m => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
+      if (r?.queued) setResendMsg((m) => ({ ...m, [id]: "✅ Enviado/encolado" }));
+      else setResendMsg((m) => ({ ...m, [id]: `⚠️ ${r?.reason || r?.error || "No enviado"}` }));
     } catch (e: any) {
-      setResendMsg(m => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
+      setResendMsg((m) => ({ ...m, [id]: `❌ ${e?.response?.data?.message || e?.message}` }));
     }
   };
 
-  // ----- Estado: WhatsApp (status sólo lectura) -----
-  const [wa, setWa] = useState<WaStatus | null>(null);
-  const [waError, setWaError] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    api.get("/customers/wa/status", { validateStatus: () => true })
-      .then(r => {
-        if (!mounted) return;
-        if (r.status >= 200 && r.status < 300) setWa(r.data as WaStatus);
-        else setWaError(r.data?.message || "No disponible");
-      })
-      .catch(e => { if (mounted) setWaError(e?.message || "No disponible"); });
-    return () => { mounted = false; };
-  }, []);
-
-  const waBadge = wa?.enabled ? (
-    <span className="badge badge-success">Activado</span>
-  ) : (
-    <span className="badge">Desactivado</span>
-  );
+  const WaCard = () => {
+    const enabled = !!wa?.enabled;
+    return (
+      <div className="card bg-base-100 shadow-sm">
+        <div className="card-body">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="card-title">WhatsApp</h2>
+            <span className={`badge ${enabled ? "badge-success" : "badge-ghost"}`}>
+              {enabled ? "Activo" : "Desactivado"}
+            </span>
+          </div>
+          <div className="text-sm space-y-1">
+            <div>
+              <span className="opacity-70">Emisor:</span>{" "}
+              {wa?.from ? <a className="link" href={`https://${wa.from.replace(/^whatsapp:/, "")}`} onClick={(e)=>e.preventDefault()}>{wa.from}</a> : "—"}
+            </div>
+            <div>
+              <span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}
+            </div>
+            <div>
+              <span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}
+            </div>
+            <div>
+              <span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}
+            </div>
+          </div>
+          {/* Nota sobre variables eliminada según solicitud */}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <AppLayout title="La Cubierta Barbería — Panel del Administrador" subtitle="Herramientas de negocio">
@@ -120,7 +157,9 @@ export default function AdminPanel() {
             <h2 className="card-title">Sumar puntos por teléfono</h2>
             <form onSubmit={onQuickPoints} className="space-y-3">
               <div className="form-control">
-                <label className="label"><span className="label-text">Teléfono</span></label>
+                <label className="label">
+                  <span className="label-text">Teléfono</span>
+                </label>
                 <input
                   className="input input-bordered"
                   type="tel"
@@ -136,7 +175,9 @@ export default function AdminPanel() {
               </div>
 
               <div className="form-control">
-                <label className="label"><span className="label-text">Notas (opcional)</span></label>
+                <label className="label">
+                  <span className="label-text">Notas (opcional)</span>
+                </label>
                 <input
                   className="input input-bordered"
                   placeholder="Ej.: Puntos manuales"
@@ -155,43 +196,23 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* WHATSAPP STATUS */}
-        <div className="card bg-base-100 shadow-sm">
-          <div className="card-body">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="card-title">WhatsApp</h2>
-              {wa ? waBadge : <span className="loading loading-ring loading-sm" />}
-            </div>
-            {waError ? (
-              <div className="alert alert-warning mt-2"><span>{waError}</span></div>
-            ) : wa ? (
-              <>
-                <div className="text-sm">
-                  <div><span className="opacity-70">Emisor:</span> {wa.from || "—"}</div>
-                  <div><span className="opacity-70">Límite diario:</span> {wa.dailyCap ?? "—"}</div>
-                  <div><span className="opacity-70">Tasa por minuto:</span> {wa.ratePerMinute ?? "—"}</div>
-                  <div><span className="opacity-70">Límite mensual:</span> {wa.monthlyCap ?? "—"}</div>
-                </div>
-                <div className="text-xs opacity-70 mt-2">
-                  El envío se controla por variables de entorno (CapRover): WA_ENABLED / ALLOW_WA_SEND / ALLOW_WA_RESEND.
-                </div>
-              </>
-            ) : (
-              <div className="mt-2 text-sm opacity-70">Cargando estado…</div>
-            )}
-          </div>
-        </div>
+        {/* WHATSAPP STATUS (sin texto de variables) */}
+        <WaCard />
 
         {/* CLIENTES */}
         <div className="card bg-base-100 shadow-sm lg:col-span-2">
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h2 className="card-title">Clientes</h2>
-              <Link to="/app/customers" className="btn btn-ghost btn-sm">Ver listado clásico</Link>
+              <Link to="/app/customers" className="btn btn-ghost btn-sm">
+                Ver listado clásico
+              </Link>
             </div>
 
             <div className="form-control">
-              <label className="label"><span className="label-text">Buscar</span></label>
+              <label className="label">
+                <span className="label-text">Buscar</span>
+              </label>
               <input
                 className="input input-bordered"
                 placeholder="Nombre, teléfono o email…"
@@ -201,9 +222,13 @@ export default function AdminPanel() {
             </div>
 
             {loading ? (
-              <div className="flex items-center gap-2"><span className="loading loading-spinner" /> Cargando…</div>
+              <div className="flex items-center gap-2">
+                <span className="loading loading-spinner" /> Cargando…
+              </div>
             ) : err ? (
-              <div className="alert alert-warning"><span>{err}</span></div>
+              <div className="alert alert-warning">
+                <span>{err}</span>
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-box border border-base-300">
                 <table className="table table-compact w-full">
@@ -212,12 +237,15 @@ export default function AdminPanel() {
                       <th>Nombre</th>
                       <th className="hidden sm:table-cell">Teléfono</th>
                       <th className="hidden sm:table-cell">Email</th>
-                      <th className="w-1">Acciones</th>
+                      <th className="w-44 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(c => (
-                      <tr key={c.id}>
+                    {filtered.map((c, idx) => (
+                      <tr
+                        key={c.id}
+                        className={idx % 2 === 0 ? "bg-base-100" : "bg-base-200/40"}
+                      >
                         <td className="align-top">
                           <div className="font-medium">{c.name}</div>
                           <div className="sm:hidden text-xs opacity-70">{c.phone || "—"}</div>
@@ -225,11 +253,16 @@ export default function AdminPanel() {
                         </td>
                         <td className="align-top hidden sm:table-cell">{c.phone || "—"}</td>
                         <td className="align-top hidden sm:table-cell">{c.email || "—"}</td>
-                        <td className="align-top">
-                          <div className="join join-vertical sm:join-horizontal">
-                            <Link to={`/app/customers/${c.id}`} className="btn btn-sm btn-outline join-item">Detalle</Link>
+                        <td className="align-top text-center">
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                            <Link
+                              to={`/app/customers/${c.id}`}
+                              className="btn btn-info btn-sm w-28"
+                            >
+                              Detalle
+                            </Link>
                             <button
-                              className="btn btn-sm btn-outline join-item"
+                              className="btn btn-info btn-sm w-28"
                               onClick={() => onResend(c.id)}
                               title="Reenviar QR por WhatsApp"
                             >
@@ -243,7 +276,11 @@ export default function AdminPanel() {
                       </tr>
                     ))}
                     {!filtered.length && (
-                      <tr><td colSpan={4} className="text-sm opacity-70 p-4">Sin resultados</td></tr>
+                      <tr>
+                        <td colSpan={4} className="text-sm opacity-70 p-4">
+                          Sin resultados
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -257,11 +294,13 @@ export default function AdminPanel() {
           <div className="card-body">
             <h2 className="card-title">Equipo (staff)</h2>
             <p className="text-sm opacity-80">
-              Aquí podrás invitar y gestionar cuentas de staff. Si ya tienes un endpoint de usuarios,
-              podemos conectar este bloque de inmediato.
+              Aquí podrás invitar y gestionar cuentas de staff. Si ya tienes un endpoint de
+              usuarios, podemos conectar este bloque de inmediato.
             </p>
             <div className="join">
-              <Link to="/app/users" className="btn btn-ghost join-item">Ir a Usuarios</Link>
+              <Link to="/app/users" className="btn btn-ghost join-item">
+                Ir a Usuarios (si existe)
+              </Link>
               <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
             </div>
           </div>
@@ -270,3 +309,4 @@ export default function AdminPanel() {
     </AppLayout>
   );
 }
+
