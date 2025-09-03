@@ -8,6 +8,7 @@ import {
   addVisitFromQrPayload,
   type CustomerLite,
 } from "@/shared/api";
+import { Scanner } from "@yudiel/react-qr-scanner";
 
 /**
  * Check-in (Staff)
@@ -116,7 +117,6 @@ export default function StaffCheckin() {
   };
 
   // ------------------ QR ------------------
-  const [QrReaderCmp, setQrReaderCmp] = useState<any>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
   const [qrMsg, setQrMsg] = useState("");
@@ -128,13 +128,6 @@ export default function StaffCheckin() {
   useEffect(() => {
     if (tab !== "qr") return;
     let cancelled = false;
-
-    import("react-qr-reader")
-      .then((m) => !cancelled && setQrReaderCmp(() => m.QrReader))
-      .catch(() => {
-        setQrReaderCmp(() => null);
-        setQrMsg("No se pudo cargar el lector QR. Instala: npm i react-qr-reader");
-      });
 
     navigator.mediaDevices
       ?.enumerateDevices()
@@ -154,23 +147,12 @@ export default function StaffCheckin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  const constraints: MediaTrackConstraints | undefined = deviceId
-    ? { deviceId: { exact: deviceId } }
-    : { facingMode: { ideal: "environment" } };
+  const constraints: MediaTrackConstraints =
+    deviceId ? { deviceId } : { facingMode: "environment" };
 
-  const onQrResult = async (result: any, error: any) => {
-    if (error || processing) return;
-    let text: string | null = null;
-    try {
-      text =
-        typeof result?.text === "string"
-          ? result.text
-          : typeof result?.getText === "function"
-          ? result.getText()
-          : String(result);
-    } catch {
-      return;
-    }
+  const onQrScan = async (codes: Array<{ rawValue: string }>) => {
+    if (processing) return;
+    const text = codes?.[0]?.rawValue;
     if (!text) return;
 
     setProcessing(true);
@@ -310,21 +292,17 @@ export default function StaffCheckin() {
                 )}
               </div>
 
-              {!QrReaderCmp ? (
-                <div className="alert mt-3">
-                  <span>{qrMsg || "Cargando lector… Si no inicia, concede permiso de cámara."}</span>
-                </div>
-              ) : (
-                <div className="rounded-lg overflow-hidden border border-base-300">
-                  <QrReaderCmp
-                    constraints={{ facingMode: "environment", ...(constraints ? { video: constraints } : {}) } as any}
-                    onResult={onQrResult}
-                    scanDelay={800} // más conservador
-                    videoStyle={{ width: "100%", height: "auto" }}
-                    containerStyle={{ width: "100%" }}
-                  />
-                </div>
-              )}
+              <div className="rounded-lg overflow-hidden border border-base-300">
+                <Scanner
+                  onScan={onQrScan}
+                  onError={() => setQrMsg("No se pudo acceder a la cámara. Revisa permisos.")}
+                  constraints={constraints}
+                  scanDelay={150}
+                  paused={processing}
+                  allowMultiple={false}
+                  styles={{ container: { width: "100%" }, video: { width: "100%" } }}
+                />
+              </div>
 
               {!!qrMsg && (
                 <div className={`mt-3 alert ${qrMsg.startsWith("✅") ? "alert-success" : qrMsg.startsWith("❌") ? "alert-warning" : ""}`}>
