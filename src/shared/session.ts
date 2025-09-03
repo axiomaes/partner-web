@@ -1,30 +1,33 @@
-// partner-web/src/shared/session.ts
-export type Session = {
-  token: string;
-  payload: {
-    businessId: string;
-    email?: string;
-    role?: string;
-    [k: string]: unknown;
-  };
+// Manejo de sesión en frontend
+export type SessionUser = {
+  id: string;
+  name?: string;
+  email?: string;
+  role: string; // 'ADMIN' | 'BARBER' | 'OWNER' | 'SUPERADMIN' | ...
 };
 
-export function loadSession(): Session | null {
-  const token = localStorage.getItem("token");
-  if (!token) return null;
+const USER_KEY = "axioma:me";
+const TOKEN_KEY = "accessToken";
+
+export function saveSession(user: SessionUser, token?: string) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function readSession(): SessionUser | null {
+  const raw =
+    localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY);
+  if (!raw) return null;
   try {
-    const base64 = (token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/");
-    const json = JSON.parse(atob(base64));
-    return { token, payload: { businessId: json.businessId, email: json.email, role: json.role, ...json } };
+    return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-export function saveToken(token: string) {
-  localStorage.setItem("token", token);
-}
-
 export function clearSession() {
-  localStorage.removeItem("token");
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
 }
