@@ -7,6 +7,7 @@ import {
   RouterProvider,
   Navigate,
   useParams,
+  Outlet,
 } from "react-router-dom";
 
 // Públicas
@@ -29,7 +30,7 @@ import "./index.css";
 
 const qc = new QueryClient();
 
-/** ===== Wrappers para redirecciones legacy con params dinámicos ===== */
+/** Redirecciones legacy */
 function LegacyCustomerToApp() {
   const { id } = useParams();
   return <Navigate to={`/app/customers/${id}`} replace />;
@@ -45,7 +46,7 @@ const router = createBrowserRouter([
   // Home
   { path: "/", element: <Home /> },
 
-  // Login staff y página de acceso denegado
+  // Login staff y acceso denegado
   { path: "/login", element: <LoginStaff /> },
   { path: "/unauthorized", element: <Unauthorized /> },
 
@@ -59,16 +60,10 @@ const router = createBrowserRouter([
   // Panel interno en /app/*
   {
     path: "/app",
+    element: <Outlet />, // 👈 NECESARIO para que rendericen los hijos (y el index)
     children: [
-      // Dashboard → lista de clientes por defecto
-      {
-        index: true,
-        element: (
-          <ProtectedRoute roles={["ADMIN", "BARBER"]}>
-            <CustomersPage />
-          </ProtectedRoute>
-        ),
-      },
+      // Index → redirige a /app/customers
+      { index: true, element: <Navigate to="customers" replace /> },
 
       // Clientes
       {
@@ -105,7 +100,6 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      // versión de checkin con layout del panel (si la usas)
       {
         path: "staff/checkin",
         element: (
@@ -115,7 +109,7 @@ const router = createBrowserRouter([
         ),
       },
 
-      // Portal points dentro del panel (opcional)
+      // (Opcional) Portal points dentro del panel
       {
         path: "portal/points",
         element: (
@@ -138,7 +132,7 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={new QueryClient()}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   </React.StrictMode>
