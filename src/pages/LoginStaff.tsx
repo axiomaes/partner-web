@@ -4,15 +4,31 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
 import { saveSession } from "@/shared/session";
 
-type ApiUser = { id: string; name: string; email: string; role: string };
+type JwtClaims = {
+  sub: string;
+  email?: string;
+  role?: string;
+  businessId?: string;
+  iat?: number;
+  exp?: number;
+};
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-// Puedes sobreescribir las rutas con VITE_API_AUTH_PATHS="/auth/login,/api/auth/login,/login"
-const AUTH_PATHS: string[] = (import.meta.env.VITE_API_AUTH_PATHS ||
-  "/auth/login,/api/auth/login,/login")
+const AUTH_PATHS: string[] = (import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login")
   .split(",")
-  .map(p => p.trim())
+  .map((p) => p.trim())
   .filter(Boolean);
+
+// decode JWT sin validar firma (solo para leer claims en cliente)
+function parseJwt(token: string): JwtClaims | null {
+  try {
+    const [, payload] = token.split(".");
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decodeURIComponent(escape(json)));
+  } catch {
+    return null;
+  }
+}
 
 export default function LoginStaff() {
   const [email, setEmail] = useState("");
@@ -27,45 +43,29 @@ export default function LoginStaff() {
     nav(to, { replace: true });
   };
 
-  async function tryLogin(): Promise<{ token: string; user: ApiUser }> {
+  async function tryLogin(): Promise<{ access_token: string; user?: any }> {
     const body = JSON.stringify({ email, password });
 
-    // Intentamos en cadena las posibles rutas de auth
     for (const path of AUTH_PATHS) {
       const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
 
-        if (res.status === 404) {
-          // Ruta no existe → probamos la siguiente
-          continue;
-        }
+      if (res.status === 404) continue; // probamos siguiente ruta
 
-        if (res.status === 401) {
-          throw new Error("Credenciales inválidas.");
-        }
-
-        if (!res.ok) {
-          throw new Error(`Error del servidor (código ${res.status}).`);
-        }
-
-        // Éxito
-        return await res.json();
-      } catch (e) {
-        // Si fue 404 ya se continúa; otros errores se propagan al finalizar el bucle
-        if ((e as Error).message.includes("404")) continue;
-        // seguimos intentando otras rutas; si ninguna sirve, lanzamos el último error
+      if (res.status === 401) throw new Error("Credenciales inválidas.");
+      if (!res.ok && res.status !== 201) {
+        throw new Error(`Error del servidor (código ${res.status}).`);
       }
+
+      // éxito (200 o 201)
+      return await res.json();
     }
 
-    throw new Error(
-      "No se encontró el endpoint de autenticación en el API (404). " +
-        "Revisa VITE_API_BASE o define VITE_API_AUTH_PATHS."
-    );
+    throw new Error("No se encontró el endpoint de autenticación (404). Revisa VITE_API_BASE o VITE_API_AUTH_PATHS.");
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -74,42 +74,38 @@ export default function LoginStaff() {
     setLoading(true);
 
     try {
-      // 1) intento real contra API (con fallbacks)
       const data = await tryLogin();
-      const user = data.user ?? ({} as ApiUser);
+
+      // Algunos backends devuelven { access_token } y otros { token, user }
+      const token: string = (data as any).access_token || (data as any).token;
+      if (!token) throw new Error("Respuesta sin token.");
+
+      // Si viene user lo usamos; si no, lo leemos del JWT
+      let user = (data as any).user;
+      if (!user) {
+        const claims = parseJwt(token);
+        if (!claims?.sub) throw new Error("Token inválido.");
+        user = {
+          id: claims.sub,
+          name: claims.email?.split("@")[0] || "Usuario",
+          email: claims.email || email,
+          role: claims.role || "ADMIN",
+          businessId: claims.businessId,
+        };
+      }
 
       saveSession(
         {
-          id: String(user.id ?? "unknown"),
+          id: String(user.id),
           name: user.name ?? "",
           email: user.email ?? email,
           role: user.role ?? "ADMIN",
         },
-        data.token
+        token
       );
+
       afterLogin();
-      return;
     } catch (err: any) {
-      // 2) bypass DEV opcional
-      const devOn = String(import.meta.env.VITE_DEV_LOGIN || "").toLowerCase() === "true";
-      const DEV_EMAIL =
-        import.meta.env.VITE_DEV_SUPERADMIN_EMAIL || "admin@axioma-creativa.es";
-      const DEV_PASS = import.meta.env.VITE_DEV_SUPERADMIN_PASS || "admin123";
-
-      if (devOn && email === DEV_EMAIL && password === DEV_PASS) {
-        saveSession(
-          {
-            id: "dev-superadmin",
-            name: "Super Admin",
-            email,
-            role: "SUPERADMIN",
-          },
-          "dev-token"
-        );
-        afterLogin();
-        return;
-      }
-
       setMsg(err?.message || "No se pudo iniciar sesión.");
     } finally {
       setLoading(false);
