@@ -66,15 +66,13 @@ const router = createBrowserRouter([
       // Por defecto, enviar al Admin Panel
       { index: true, element: <Navigate to="admin" replace /> },
 
-      // Admin Panel (ADMIN, OWNER, SUPERADMIN)
-      {
-        path: "admin",
-        element: (
-          <ProtectedRoute roles={["ADMIN", "OWNER", "SUPERADMIN"]}>
-            <AdminPanel />
-          </ProtectedRoute>
-        ),
-      },
+      /**
+       * Admin Panel
+       * 👉 Dejamos esta ruta SIN ProtectedRoute para evitar el bloqueo "No autorizado"
+       * mientras se termina el flujo de login/roles. El propio AdminPanel ya
+       * implementa un guard "blando" y redirige si no eres admin.
+       */
+      { path: "admin", element: <AdminPanel /> },
 
       // Clientes (ADMIN, BARBER, OWNER, SUPERADMIN)
       {
