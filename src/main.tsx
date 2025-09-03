@@ -55,7 +55,7 @@ const router = createBrowserRouter([
 
   // Legales (públicas)
   { path: "/Legal/privacidad", element: <Privacidad /> },
-  { path: "/Legal/aviso", element: <Avisolegal /> },
+  { path: "/Legal/aviso", element: <AvisoLegal /> },
   { path: "/Legal/cookies", element: <Cookies /> },
 
   // Login staff y acceso denegado
