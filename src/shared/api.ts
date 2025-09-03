@@ -74,31 +74,18 @@ portalApi.interceptors.request.use((config) => {
  * ===========================================
  */
 
-// Crear cliente
-export const createCustomer = (name: string, phone: string, businessId: string) =>
-  api
-    .post("/customers", {
-      name,
-      phone,
-      business: { connect: { id: businessId } },
-    })
-    .then((r) => r.data);
+type CreatedCustomer = { id: string; name: string; existed?: boolean };
 
-// Crear staff (usuario)
+// Crear cliente (el backend toma el businessId del JWT)
+export const createCustomer = (name: string, phone: string) =>
+  api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
+
+// Crear staff (usuario) — el backend asigna el negocio por JWT
 export const createStaff = (
   email: string,
   password: string,
-  businessId: string,
   role: "ADMIN" | "BARBER"
-) =>
-  api
-    .post("/users", {
-      email,
-      password,
-      role,
-      business: { connect: { id: businessId } },
-    })
-    .then((r) => r.data);
+) => api.post("/users", { email, password, role }).then((r) => r.data);
 
 // Listar clientes
 export const listCustomers = () =>
@@ -108,15 +95,23 @@ export const listCustomers = () =>
 
 // Añadir visita (suma “puntos”)
 export const addVisit = (customerId: string, notes?: string) =>
-  api.post(`/customers/${customerId}/visits`, { notes }).then((r) => r.data);
+  api.post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes }).then((r) => r.data);
 
 // Recompensas del cliente
 export const getCustomerRewards = (customerId: string) =>
-  api.get(`/customers/${customerId}/rewards`).then((r) => r.data);
+  api.get(`/customers/${encodeURIComponent(customerId)}/rewards`).then((r) => r.data);
 
 // Visitas del cliente
 export const getCustomerVisits = (customerId: string) =>
-  api.get(`/customers/${customerId}/visits`).then((r) => r.data);
+  api.get(`/customers/${encodeURIComponent(customerId)}/visits`).then((r) => r.data);
+
+// Progreso hacia la siguiente recompensa
+export const getCustomerProgress = (customerId: string) =>
+  api.get(`/customers/${encodeURIComponent(customerId)}/progress`).then((r) => r.data);
+
+// URL pública del PNG del QR (sin JWT)
+export const publicCustomerQrUrl = (customerId: string) =>
+  `${baseURL}/public/customers/${encodeURIComponent(customerId)}/qr.png`;
 
 /**
  * ===========================================
@@ -185,7 +180,7 @@ export async function lookupCustomer(input: LookupInput): Promise<CustomerLite |
   try {
     const r = await api.post("/customers/lookup", body, { validateStatus: () => true });
     if (r.status >= 200 && r.status < 300 && r.data && r.data.id) return r.data as CustomerLite;
-  } catch (_) {
+  } catch {
     // continúa al fallback
   }
 
@@ -224,10 +219,10 @@ export async function addVisitFromQrPayload(payload: string) {
 
 // Sumar visita por teléfono (crea cliente si no existe)
 export function addVisitByPhone(phone: string, notes?: string) {
-  return api.post('/customers/visits/by-phone', { phone, notes }).then(r => r.data);
+  return api.post("/customers/visits/by-phone", { phone, notes }).then((r) => r.data);
 }
 
-// Reenviar QR por WhatsApp (sólo ADMIN)
+// Reenviar QR por WhatsApp (sólo ADMIN; respeta env del backend)
 export function resendCustomerQr(customerId: string) {
-  return api.post(`/customers/${encodeURIComponent(customerId)}/qr/resend`).then(r => r.data);
+  return api.post(`/customers/${encodeURIComponent(customerId)}/qr/resend`).then((r) => r.data);
 }
