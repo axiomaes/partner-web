@@ -19,9 +19,9 @@ import LoginStaff from "@/pages/LoginStaff";
 import Unauthorized from "@/pages/Unauthorized";
 
 // Legales (públicas)
-import Privacidad from "@/pages/legal/Privacidad";
-import AvisoLegal from "@/pages/legal/AvisoLegal";
-import Cookies from "@/pages/legal/Cookies";
+import Privacidad from "@/pages/Legal/Privacidad";
+import AvisoLegal from "@/pages/Legal/AvisoLegal";
+import Cookies from "@/pages/Legal/Cookies";
 
 // Panel
 import CustomersPage from "@/pages/Customers";
@@ -54,9 +54,9 @@ const router = createBrowserRouter([
   { path: "/", element: <Home /> },
 
   // Legales (públicas)
-  { path: "/legal/privacidad", element: <Privacidad /> },
-  { path: "/legal/aviso", element: <AvisoLegal /> },
-  { path: "/legal/cookies", element: <Cookies /> },
+  { path: "/Legal/privacidad", element: <Privacidad /> },
+  { path: "/Legal/aviso", element: <Avisolegal /> },
+  { path: "/Legal/cookies", element: <Cookies /> },
 
   // Login staff y acceso denegado
   { path: "/login", element: <LoginStaff /> },
