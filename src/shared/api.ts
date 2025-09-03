@@ -95,7 +95,9 @@ export const listCustomers = () =>
 
 // Añadir visita (suma “puntos”)
 export const addVisit = (customerId: string, notes?: string) =>
-  api.post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes }).then((r) => r.data);
+  api
+    .post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes })
+    .then((r) => r.data);
 
 // Recompensas del cliente
 export const getCustomerRewards = (customerId: string) =>
@@ -226,4 +228,3 @@ export function addVisitByPhone(phone: string, notes?: string) {
 export function resendCustomerQr(customerId: string) {
   return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
-
