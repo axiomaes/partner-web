@@ -1,33 +1,35 @@
-// Manejo de sesión en frontend
+// claves únicas para toda la app
+const TOKEN_KEY = "axioma:token";
+const USER_KEY  = "axioma:user";
+
 export type SessionUser = {
   id: string;
+  email: string;
   name?: string;
-  email?: string;
-  role: string; // 'ADMIN' | 'BARBER' | 'OWNER' | 'SUPERADMIN' | ...
+  role?: string;
+  businessId?: string;
 };
 
-const USER_KEY = "axioma:me";
-const TOKEN_KEY = "accessToken";
-
-export function saveSession(user: SessionUser, token?: string) {
+export function saveSession(user: SessionUser, token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
-  if (token) localStorage.setItem(TOKEN_KEY, token);
 }
 
-export function readSession(): SessionUser | null {
-  const raw =
-    localStorage.getItem(USER_KEY) || sessionStorage.getItem(USER_KEY);
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getUser(): SessionUser | null {
+  const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as SessionUser;
   } catch {
     return null;
   }
 }
 
 export function clearSession() {
-  localStorage.removeItem(USER_KEY);
   localStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(USER_KEY);
-  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
 }
