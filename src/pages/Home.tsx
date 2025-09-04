@@ -8,7 +8,11 @@ export default function Home() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { isAuth, user } = useSession();
+
+  // useSession ahora devuelve campos planos: { id, name, email, role, token, ready }
+  const s = useSession();
+  const isAuth = !!s.token;
+  const userEmail = s.email;
 
   useEffect(() => setOpen(false), [pathname]);
 
@@ -148,7 +152,7 @@ export default function Home() {
             <div className="mt-4 pt-3 border-t border-base-300">
               {isAuth ? (
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs opacity-70 truncate">{user?.email}</div>
+                  <div className="text-xs opacity-70 truncate">{userEmail}</div>
                   <button className="btn btn-outline btn-sm" onClick={onLogout}>
                     Cerrar sesión
                   </button>
@@ -205,8 +209,8 @@ export default function Home() {
                       Revisa citas, visitas y recompensas.
                     </p>
                     <div className="card-actions justify-end">
-                      <Link to="/app" className="btn btn-sm btn-primary">
-                        Ir al panel
+                      <Link to={isAuth ? "/app" : "/login"} className="btn btn-sm btn-primary">
+                        {isAuth ? "Ir al panel" : "Entrar"}
                       </Link>
                     </div>
                   </div>
