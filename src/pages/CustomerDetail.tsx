@@ -14,7 +14,13 @@ import {
 import { useSession, isAdmin } from "@/shared/auth";
 
 export type Visit = { id: string; visitedAt: string; notes?: string | null };
-export type Reward = { id: string; issuedAt: string; redeemedAt?: string | null; note?: string | null; status: "PENDING" | "REDEEMED" | "EXPIRED" };
+export type Reward = {
+  id: string;
+  issuedAt: string;
+  redeemedAt?: string | null;
+  note?: string | null;
+  status: "PENDING" | "REDEEMED" | "EXPIRED";
+};
 
 function fmt(d?: string | null) {
   if (!d) return "—";
@@ -27,7 +33,7 @@ export default function CustomerDetail() {
   const nav = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
-  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes((role || "").toString());
+  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -59,13 +65,19 @@ export default function CustomerDetail() {
 
       if (!alive) return;
 
-      if (c.status === "fulfilled") setCustomer(c.value);
-      if (r.status === "fulfilled" && Array.isArray(r.value)) setRewards(r.value as Reward[]);
-      if (v.status === "fulfilled" && Array.isArray(v.value)) setVisits(v.value as Visit[]);
+      let anyRejected = false;
 
-      if (r.status === "rejected" || v.status === "rejected") {
-        setErr("No se pudieron cargar los datos del cliente.");
-      }
+      if (c.status === "fulfilled") setCustomer(c.value as CustomerLite);
+      else anyRejected = true;
+
+      if (r.status === "fulfilled" && Array.isArray(r.value)) setRewards(r.value as Reward[]);
+      else if (r.status === "rejected") anyRejected = true;
+
+      if (v.status === "fulfilled" && Array.isArray(v.value)) setVisits(v.value as Visit[]);
+      else if (v.status === "rejected") anyRejected = true;
+
+      if (anyRejected) setErr("No se pudieron cargar los datos del cliente.");
+
       setLoading(false);
     })();
 
@@ -82,7 +94,9 @@ export default function CustomerDetail() {
       const v = await getCustomerVisits(id);
       setVisits(Array.isArray(v) ? (v as Visit[]) : []);
     } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "No se pudo registrar la visita.");
+      const msg =
+        e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
+      setErr(msg);
     } finally {
       setAddingVisit(false);
     }
@@ -95,7 +109,9 @@ export default function CustomerDetail() {
       await resendCustomerQr(id);
       alert("QR reenviado (si el proveedor está configurado).");
     } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.");
+      const msg =
+        e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.";
+      setErr(msg);
     } finally {
       setSendingQr(false);
     }
@@ -110,10 +126,12 @@ export default function CustomerDetail() {
       await deleteCustomer(id);
       nav("/app/customers", { replace: true });
     } catch (e: any) {
+      const status = e?.response?.status;
+      const apiMsg = e?.response?.data?.message;
       const msg =
-        e?.status === 403
-          ? "No tienes permiso para eliminar (usa un usuario ADMIN u OWNER)."
-          : e?.message || "No se pudo eliminar el cliente.";
+        status === 401 || status === 403
+          ? apiMsg || "No tienes permiso para eliminar (usa un usuario ADMIN/OWNER/SUPERADMIN)."
+          : apiMsg || e?.message || "No se pudo eliminar el cliente.";
       setErr(msg);
     } finally {
       setDeleting(false);
@@ -129,22 +147,39 @@ export default function CustomerDetail() {
       )}
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver al listado</Link>
-        <button onClick={onAddVisit} className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`} disabled={addingVisit || !id}>
+        <Link to="/app/customers" className="btn btn-ghost btn-sm">
+          ← Volver al listado
+        </Link>
+        <button
+          onClick={onAddVisit}
+          className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
+          disabled={addingVisit || !id}
+        >
           {addingVisit ? "" : "Añadir visita"}
         </button>
-        <button onClick={onResendQr} className={`btn btn-outline btn-sm ${sendingQr ? "loading" : ""}`} disabled={sendingQr || !id}>
+        <button
+          onClick={onResendQr}
+          className={`btn btn-outline btn-sm ${sendingQr ? "loading" : ""}`}
+          disabled={sendingQr || !id}
+        >
           {sendingQr ? "" : "Reenviar QR"}
         </button>
         {canDelete && (
-          <button onClick={onDelete} className={`btn btn-error btn-sm ${deleting ? "loading" : ""}`} disabled={deleting}>
+          <button
+            onClick={onDelete}
+            className={`btn btn-error btn-sm ${deleting ? "loading" : ""}`}
+            disabled={deleting}
+          >
             {deleting ? "" : "Eliminar cliente"}
           </button>
         )}
       </div>
 
       {loading ? (
-        <div className="p-4 flex items-center gap-2"><span className="loading loading-spinner" />Cargando…</div>
+        <div className="p-4 flex items-center gap-2">
+          <span className="loading loading-spinner" />
+          Cargando…
+        </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
           {/* Visitas */}
@@ -156,7 +191,12 @@ export default function CustomerDetail() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-compact">
-                    <thead><tr><th>Fecha</th><th>Notas</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Notas</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {visits.map((v) => (
                         <tr key={v.id}>
@@ -180,11 +220,20 @@ export default function CustomerDetail() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-compact">
-                    <thead><tr><th>Estado</th><th>Emitida</th><th>Canjeada</th><th>Nota</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Estado</th>
+                        <th>Emitida</th>
+                        <th>Canjeada</th>
+                        <th>Nota</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {rewards.map((r) => (
                         <tr key={r.id}>
-                          <td><span className="badge badge-outline">{r.status}</span></td>
+                          <td>
+                            <span className="badge badge-outline">{r.status}</span>
+                          </td>
                           <td>{fmt(r.issuedAt)}</td>
                           <td>{fmt(r.redeemedAt)}</td>
                           <td>{r.note || "—"}</td>
@@ -199,7 +248,11 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {!admin && <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>}
+      {!admin && (
+        <p className="text-xs opacity-60 mt-6">
+          Algunas columnas pueden estar ocultas según tu rol.
+        </p>
+      )}
     </AppLayout>
   );
 }
