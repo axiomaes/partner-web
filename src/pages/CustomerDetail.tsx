@@ -10,6 +10,7 @@ import {
   deleteCustomer,
   getCustomer,
   type CustomerLite,
+  api, // 👈 para canjear la recompensa
 } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 
@@ -34,6 +35,7 @@ export default function CustomerDetail() {
   const { role } = useSession();
   const admin = isAdmin(role);
   const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
+  const canRedeem = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")); // 👈 permisos para canjear
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -44,6 +46,7 @@ export default function CustomerDetail() {
   const [deleting, setDeleting] = useState(false);
   const [addingVisit, setAddingVisit] = useState(false);
   const [sendingQr, setSendingQr] = useState(false);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null); // estado para canje
 
   const headerTitle = useMemo(() => {
     const fallback = id?.slice(0, 8) ?? "";
@@ -91,8 +94,9 @@ export default function CustomerDetail() {
     try {
       setAddingVisit(true);
       await addVisit(id, "Visita manual");
-      const v = await getCustomerVisits(id);
+      const [v, r] = await Promise.all([getCustomerVisits(id), getCustomerRewards(id)]);
       setVisits(Array.isArray(v) ? (v as Visit[]) : []);
+      setRewards(Array.isArray(r) ? (r as Reward[]) : []); // 👈 refresca recompensas (por si se emitió una)
     } catch (e: any) {
       const msg =
         e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
@@ -114,6 +118,29 @@ export default function CustomerDetail() {
       setErr(msg);
     } finally {
       setSendingQr(false);
+    }
+  }
+
+  async function onRedeem(rewardId: string) {
+    if (!id) return;
+    if (!canRedeem) {
+      setErr("No tienes permiso para canjear recompensas.");
+      return;
+    }
+    const ok = confirm("¿Canjear esta recompensa ahora?");
+    if (!ok) return;
+
+    try {
+      setRedeemingId(rewardId);
+      await api.post(`/customers/${id}/rewards/redeem`, { rewardId });
+      const r = await getCustomerRewards(id);
+      setRewards(Array.isArray(r) ? (r as Reward[]) : []);
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.message || e?.message || "No se pudo canjear la recompensa.";
+      setErr(msg);
+    } finally {
+      setRedeemingId(null);
     }
   }
 
@@ -226,21 +253,47 @@ export default function CustomerDetail() {
                         <th>Emitida</th>
                         <th>Canjeada</th>
                         <th>Nota</th>
+                        <th className="w-1">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rewards.map((r) => (
                         <tr key={r.id}>
                           <td>
-                            <span className="badge badge-outline">{r.status}</span>
+                            {r.status === "REDEEMED" ? (
+                              <span className="badge badge-success gap-1">✓ Canjeada</span>
+                            ) : r.status === "PENDING" ? (
+                              <span className="badge badge-outline">PENDING</span>
+                            ) : (
+                              <span className="badge">EXPIRED</span>
+                            )}
                           </td>
                           <td>{fmt(r.issuedAt)}</td>
                           <td>{fmt(r.redeemedAt)}</td>
-                          <td>{r.note || "—"}</td>
+                          <td style={{ whiteSpace: "pre-wrap" }}>{r.note || "—"}</td>
+                          <td className="text-right">
+                            {r.status === "PENDING" && canRedeem ? (
+                              <button
+                                onClick={() => onRedeem(r.id)}
+                                className={`btn btn-xs btn-primary ${redeemingId === r.id ? "loading" : ""}`}
+                                disabled={redeemingId === r.id}
+                                title="Canjear recompensa"
+                              >
+                                {redeemingId === r.id ? "" : "Canjear"}
+                              </button>
+                            ) : (
+                              <span className="text-xs opacity-60">—</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {!canRedeem && (
+                    <p className="text-xs opacity-60 mt-2">
+                      Solo ADMIN / OWNER / SUPERADMIN pueden canjear recompensas.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
