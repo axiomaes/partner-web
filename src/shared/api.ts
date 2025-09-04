@@ -3,23 +3,12 @@ import axios, { AxiosHeaders, AxiosInstance } from "axios";
 import { getToken } from "./auth";
 import type { UserRole } from "./auth";
 
-/**
- * ===========================================
- *  Base URL (prod/dev) + axios instances
- * ===========================================
- */
-
+/** ================= Base URL ================== */
 const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
-
-function stripTrailingSlashes(u: string) {
-  return u.replace(/\/+$/, "");
-}
 
 function computeBaseURL(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
-  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") {
-    return stripTrailingSlashes(viteEnv);
-  }
+  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") return viteEnv;
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
@@ -30,7 +19,7 @@ function computeBaseURL(): string {
 
 export const baseURL = computeBaseURL();
 
-/** Instancia para STAFF/ADMIN (token de panel) */
+/** ============= Axios panel (staff/admin) ============= */
 export const api: AxiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -47,25 +36,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// (Opcional) manejar 401 globalmente
-api.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    const status = err?.response?.status;
-    if (status === 401) {
-      // Si la sesión expiró, envía al login
-      window.location.assign("/login");
-    }
-    return Promise.reject(err);
-  }
-);
-
-/**
- * ===========================================
- *  Sesión del PORTAL (cliente final con OTP)
- * ===========================================
- * Guardamos un token distinto al del panel.
- */
+/** ============= Sesión / API Portal (OTP clientes) ============= */
 const PORTAL_KEY = "axioma_portal";
 export type PortalSession = { token: string; customerId?: string; businessId?: string };
 
@@ -84,7 +55,6 @@ export function clearPortalSession() {
   localStorage.removeItem(PORTAL_KEY);
 }
 
-/** Instancia para PORTAL (usa token del cliente) */
 export const portalApi: AxiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -99,144 +69,96 @@ portalApi.interceptors.request.use((config) => {
   return config;
 });
 
-/**
- * ===========================================
- *  Utils/helpers comunes
- * ===========================================
- */
+/** ============= Tipos/Helpers panel ============= */
+export type UserLite = { id: string; email: string; role: UserRole };
 
-function asArray<T = any>(data: any): T[] {
-  return (Array.isArray(data) ? data : data?.items ?? data?.data ?? []) || [];
-}
-
-async function axGet<T>(path: string): Promise<T> {
-  const r = await api.get(path, { validateStatus: () => true });
-  if (r.status >= 200 && r.status < 300) return r.data as T;
-  throw new Error(`HTTP ${r.status}`);
-}
-
-async function axDelete(path: string): Promise<void> {
-  const r = await api.delete(path, { validateStatus: () => true });
-  if (r.status === 204 || (r.status >= 200 && r.status < 300)) return;
-  throw new Error(`HTTP ${r.status}`);
-}
-
-/**
- * ===========================================
- *  Helpers AUTH (panel)
- * ===========================================
- */
-
-export type Me = {
+export type CustomerLite = {
   id: string;
-  email: string;
-  role: UserRole;
-  name?: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
   businessId?: string;
 };
 
-/**
- * Devuelve el usuario autenticado.
- * Prueba varias rutas típicas para mayor compatibilidad.
- */
-export async function getMe(): Promise<Me | null> {
-  const candidates = ["/auth/me", "/users/me", "/me"];
-  for (const p of candidates) {
-    try {
-      const r = await api.get(p, { validateStatus: () => true });
-      if (r.status >= 200 && r.status < 300 && r.data) return r.data as Me;
-      if (r.status === 404) continue;
-    } catch {
-      // intenta la siguiente
-    }
-  }
-  return null;
-}
-
-/**
- * ===========================================
- *  Helpers STAFF/ADMIN (panel)
- * ===========================================
- */
-
 type CreatedCustomer = { id: string; name: string; existed?: boolean };
 
-export type UserLite = { id: string; email: string; role: UserRole };
-
-// Crear cliente (el backend toma el businessId del JWT)
-export const createCustomer = (name: string, phone: string) =>
-  api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
-
-// Listar usuarios
+/** Usuarios */
 export const listUsers = () =>
-  api
-    .get("/users", { validateStatus: () => true })
-    .then((r) => asArray<UserLite>(r.data));
+  api.get("/users").then((r) =>
+    Array.isArray(r.data) ? (r.data as UserLite[]) : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
+  );
 
-// Crear usuario (alias de createStaff)
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
 
-// Compat: helper previo
+// Alias legacy
 export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
   api.post("/users", { email, password, role }).then((r) => r.data);
 
-// Listar clientes (con fallback de estructura)
+/** Clientes */
 export const listCustomers = () =>
-  api
-    .get("/customers", { validateStatus: () => true })
-    .then((r) => asArray(r.data));
+  api.get("/customers").then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
-// Eliminar cliente (DELETE) con fallback de ruta
-export async function deleteCustomer(id: string): Promise<void> {
-  const pid = encodeURIComponent(id);
-  const candidates = [`/customers/${pid}`, `/app/customers/${pid}`];
-  let lastError: unknown = null;
+export const createCustomer = (name: string, phone: string) =>
+  api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
 
-  for (const p of candidates) {
-    try {
-      await axDelete(p);
-      return;
-    } catch (e: any) {
-      lastError = e;
-      // Si el endpoint no existe (404), probamos el siguiente
-      if (String(e?.message || "").includes("HTTP 404")) continue;
-      throw e;
+/** 👉 NUEVO: obtener un cliente (para mostrar nombre/phone/email) */
+export async function getCustomer(id: string): Promise<CustomerLite | null> {
+  try {
+    const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
+    if (r.status >= 200 && r.status < 300 && r.data) {
+      return r.data as CustomerLite;
     }
+  } catch {
+    // sigue al fallback
   }
-
-  if (lastError) throw lastError;
+  // Fallback: buscar en la lista si el endpoint no existe
+  try {
+    const all = await listCustomers();
+    const hit = (all as any[]).find((c) => c.id === id) ?? null;
+    return hit as CustomerLite | null;
+  } catch {
+    return null;
+  }
 }
 
-// Añadir visita (suma “puntos”)
+/** 👉 NUEVO: eliminar cliente con manejo de 403/errores */
+export async function deleteCustomer(id: string): Promise<void> {
+  const r = await api.delete(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) return;
+
+  const err: any = new Error(
+    r.status === 403
+      ? "No tienes permiso para eliminar este cliente (se requiere ADMIN u OWNER)."
+      : r.data?.message || `Fallo al eliminar (HTTP ${r.status}).`
+  );
+  err.status = r.status;
+  throw err;
+}
+
+/** Visitas / recompensas / progreso / QR */
 export const addVisit = (customerId: string, notes?: string) =>
   api.post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes }).then((r) => r.data);
 
-// Recompensas del cliente
 export const getCustomerRewards = (customerId: string) =>
-  axGet(`/customers/${encodeURIComponent(customerId)}/rewards`);
+  api.get(`/customers/${encodeURIComponent(customerId)}/rewards`).then((r) => r.data);
 
-// Visitas del cliente
 export const getCustomerVisits = (customerId: string) =>
-  axGet(`/customers/${encodeURIComponent(customerId)}/visits`);
+  api.get(`/customers/${encodeURIComponent(customerId)}/visits`).then((r) => r.data);
 
-// Progreso hacia la siguiente recompensa
 export const getCustomerProgress = (customerId: string) =>
-  axGet(`/customers/${encodeURIComponent(customerId)}/progress`);
+  api.get(`/customers/${encodeURIComponent(customerId)}/progress`).then((r) => r.data);
 
-// URL pública del PNG del QR (sin JWT)
 export const publicCustomerQrUrl = (customerId: string) =>
   `${baseURL}/public/customers/${encodeURIComponent(customerId)}/qr.png`;
 
-/**
- * ===========================================
- *  Helpers PORTAL (cliente con OTP)
- * ===========================================
- */
+export function resendCustomerQr(customerId: string) {
+  return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
+}
 
-// Solicitar OTP por móvil o correo
+/** ============= API Portal (OTP) ============= */
 export async function requestCustomerOtp(body: { phone?: string; email?: string }) {
-  const r = await axios.post(`${baseURL}/portal/otp/request`, body, {
+  const r = await axios.post(baseURL + "/portal/otp/request", body, {
     headers: { "Content-Type": "application/json" },
     validateStatus: () => true,
   });
@@ -244,9 +166,8 @@ export async function requestCustomerOtp(body: { phone?: string; email?: string 
   throw new Error(r.data?.message || "No se pudo enviar el código.");
 }
 
-// Verificar OTP y devolver token del portal
 export async function verifyCustomerOtp(body: { phone?: string; email?: string; code: string }) {
-  const r = await axios.post(`${baseURL}/portal/otp/verify`, body, {
+  const r = await axios.post(baseURL + "/portal/otp/verify", body, {
     headers: { "Content-Type": "application/json" },
     validateStatus: () => true,
   });
@@ -254,7 +175,6 @@ export async function verifyCustomerOtp(body: { phone?: string; email?: string; 
   throw new Error(r.data?.message || "Código inválido o expirado.");
 }
 
-// Datos del cliente autenticado (portal)
 export async function getMyVisits() {
   const r = await portalApi.get("/portal/me/visits", { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return r.data as any[];
@@ -266,37 +186,19 @@ export async function getMyRewards() {
   return [];
 }
 
-// ======== STAFF HELPERS (check-in) ========
-
-export type CustomerLite = {
-  id: string;
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  businessId?: string;
-};
-
+/** ============= Búsqueda/Check-in staff ============= */
 type LookupInput = { phone?: string; email?: string };
 
-/**
- * Busca un cliente por teléfono o email.
- * Preferido: endpoint dedicado POST /customers/lookup
- * Fallback: filtrar en memoria desde /customers (si el backend aún no tiene lookup).
- */
 export async function lookupCustomer(input: LookupInput): Promise<CustomerLite | null> {
   const body: LookupInput = {};
   if (input.phone) body.phone = input.phone.trim();
   if (input.email) body.email = input.email.trim();
 
-  // 1) Intento con endpoint dedicado
   try {
     const r = await api.post("/customers/lookup", body, { validateStatus: () => true });
     if (r.status >= 200 && r.status < 300 && r.data && r.data.id) return r.data as CustomerLite;
-  } catch {
-    // continúa al fallback
-  }
+  } catch {}
 
-  // 2) Fallback: traer lista y filtrar (no ideal, pero útil en dev)
   try {
     const list = await listCustomers();
     const phoneNorm = (body.phone || "").replace(/\D/g, "");
@@ -312,29 +214,6 @@ export async function lookupCustomer(input: LookupInput): Promise<CustomerLite |
   }
 }
 
-/**
- * Acredita una visita por QR payload.
- * El payload viene del componente CustomerQR: { t:'axioma-visit', customerId, businessId }
- */
-export async function addVisitFromQrPayload(payload: string) {
-  let parsed: any;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    throw new Error("QR inválido: no es JSON.");
-  }
-  if (!parsed || parsed.t !== "axioma-visit" || !parsed.customerId) {
-    throw new Error("QR inválido: formato no reconocido.");
-  }
-  return addVisit(parsed.customerId, "Visita por QR");
-}
-
-// Sumar visita por teléfono (crea cliente si no existe)
 export function addVisitByPhone(phone: string, notes?: string) {
   return api.post("/customers/visits/by-phone", { phone, notes }).then((r) => r.data);
-}
-
-// Reenviar QR por WhatsApp (sólo ADMIN; respeta env del backend)
-export function resendCustomerQr(customerId: string) {
-  return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
