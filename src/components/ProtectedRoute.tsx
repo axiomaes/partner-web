@@ -1,38 +1,30 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { ReactNode, useMemo } from "react";
+import { ReactNode } from "react";
+import { getToken, getUser } from "@/shared/session";
 
 type Props = {
-  roles?: Array<"ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN">;
+  roles?: string[];           // p.ej. ["ADMIN","OWNER","SUPERADMIN"]
   children: ReactNode;
 };
 
-type Session = {
-  email: string;
-  role: "ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN";
-  // puedes añadir más campos si los usas luego
-};
-
-const SESSION_KEY = "axioma.session";
-
 export default function ProtectedRoute({ roles, children }: Props) {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const token = getToken();
+  const user  = getUser();
 
-  const session: Session | null = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      return raw ? (JSON.parse(raw) as Session) : null;
-    } catch {
-      return null;
-    }
-  }, [pathname]);
-
-  // si no hay sesión -> al login
-  if (!session) {
-    return <Navigate to="/login" replace state={{ from: pathname }} />;
+  // Si no hay sesión -> al login, recordando de dónde venía
+  if (!token || !user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
+    );
   }
 
-  // si hay restricción de roles y no coincide -> unauthorized
-  if (roles && !roles.includes(session.role)) {
+  // Si hay restricción de roles y el usuario no cumple -> unauthorized
+  if (roles && user.role && !roles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
