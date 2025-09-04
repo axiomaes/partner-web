@@ -1,34 +1,10 @@
+// src/pages/LoginStaff.tsx
 import { useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
-import { saveSession } from "@/shared/session";
+import { saveSession, type UserRole } from "@/shared/auth";
 
-type JwtClaims = {
-  sub: string;
-  email?: string;
-  role?: string;
-  businessId?: string;
-  iat?: number;
-  exp?: number;
-};
-
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-const AUTH_PATHS: string[] = (
-  import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login"
-)
-  .split(",")
-  .map((p: string) => p.trim())
-  .filter(Boolean);
-
-function parseJwt(token: string): JwtClaims | null {
-  try {
-    const [, payload] = token.split(".");
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decodeURIComponent(escape(json)));
-  } catch {
-    return null;
-  }
-}
+type ApiMeUser = { id: string; name?: string; email: string; role: UserRole };
 
 export default function LoginStaff() {
   const [email, setEmail] = useState("");
@@ -39,28 +15,12 @@ export default function LoginStaff() {
   const location = useLocation() as any;
 
   const afterLogin = () => {
-    const from: string | undefined = location.state?.from;
-    const to = !from || from.startsWith("/login") ? "/app" : from;
+    const rawFrom: string | undefined = location.state?.from;
+    // Evita bucles si `from` apunta a /login
+    const to =
+      rawFrom && !/^\/login(?:\b|\/|\?)/.test(rawFrom) ? rawFrom : "/app";
     nav(to, { replace: true });
-    // window.location.assign(to); // fallback si el router no navega
   };
-
-  async function tryLogin(): Promise<{ access_token?: string; token?: string; user?: any }> {
-    const body = JSON.stringify({ email, password });
-    for (const path of AUTH_PATHS) {
-      const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (res.status === 404) continue;
-      if (res.status === 401) throw new Error("Credenciales inválidas.");
-      if (!res.ok && res.status !== 201) throw new Error(`Error del servidor (código ${res.status}).`);
-      return await res.json();
-    }
-    throw new Error("No se encontró el endpoint de autenticación (404). Revisa VITE_API_BASE o VITE_API_AUTH_PATHS.");
-  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,34 +28,56 @@ export default function LoginStaff() {
     setLoading(true);
 
     try {
-      const data = await tryLogin();
-      const token: string = (data as any).access_token || (data as any).token;
-      if (!token) throw new Error("Respuesta sin token.");
-
-      let user = (data as any).user;
-      if (!user) {
-        const claims = parseJwt(token);
-        if (!claims?.sub) throw new Error("Token inválido.");
-        user = {
-          id: claims.sub,
-          name: claims.email?.split("@")[0] || "Usuario",
-          email: claims.email || email,
-          role: claims.role || "ADMIN",
-          businessId: claims.businessId,
-        };
-      }
-
-      saveSession(
+      const res = await fetch(
+        `${import.meta.env.VITE_API_BASE}/auth/login`,
         {
-          id: String(user.id),
-          name: user.name ?? "",
-          email: user.email ?? email,
-          role: user.role ?? "ADMIN",
-        },
-        token
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        }
       );
 
-      afterLogin();
+      if (res.ok) {
+        const data = await res.json(); // { access_token }
+        // Opcional: pedir /auth/me para datos de usuario
+        let me: ApiMeUser | null = null;
+        try {
+          const meRes = await fetch(
+            `${import.meta.env.VITE_API_BASE}/auth/me`,
+            { headers: { Authorization: `Bearer ${data.access_token}` } }
+          );
+          if (meRes.ok) me = await meRes.json();
+        } catch {}
+
+        const user: ApiMeUser = me ?? {
+          id: "me",
+          email,
+          name: email.split("@")[0],
+          role: "ADMIN", // fallback en caso de no tener /me
+        };
+
+        saveSession(
+          { id: String(user.id), name: user.name, email: user.email, role: user.role },
+          data.access_token
+        );
+        setLoading(false);
+        return afterLogin();
+      }
+
+      // DEV bypass
+      const DEV_EMAIL =
+        import.meta.env.VITE_DEV_SUPERADMIN_EMAIL || "admin@axioma-creativa.es";
+      const DEV_PASS = import.meta.env.VITE_DEV_SUPERADMIN_PASS || "admin123";
+      if (email === DEV_EMAIL && password === DEV_PASS) {
+        saveSession(
+          { id: "dev", name: "Super Admin", email, role: "SUPERADMIN" },
+          "dev-token"
+        );
+        setLoading(false);
+        return afterLogin();
+      }
+
+      setMsg("Credenciales inválidas.");
     } catch (err: any) {
       setMsg(err?.message || "No se pudo iniciar sesión.");
     } finally {
@@ -111,40 +93,32 @@ export default function LoginStaff() {
             <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
             <h1 className="text-lg font-semibold">Acceso Staff</h1>
           </div>
-
           <form className="grid gap-3" onSubmit={onSubmit}>
-            <label className="form-control">
-              <span className="label-text">Email</span>
-              <input
-                className="input input-bordered"
-                type="email"
-                placeholder="email"
-                autoFocus
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="form-control">
-              <span className="label-text">Contraseña</span>
-              <input
-                className="input input-bordered"
-                type="password"
-                placeholder="contraseña"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </label>
-
-            <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={loading}>
+            <input
+              className="input input-bordered"
+              type="email"
+              placeholder="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              className="input input-bordered"
+              type="password"
+              placeholder="contraseña"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              className={`btn btn-primary ${loading ? "loading" : ""}`}
+              disabled={loading}
+            >
               Entrar
             </button>
           </form>
-
-          {!!msg && <div className="alert alert-warning mt-3 text-sm">{msg}</div>}
-
+          {!!msg && (
+            <div className="alert alert-warning mt-2 text-sm">{msg}</div>
+          )}
           <div className="mt-2 text-xs opacity-70">
             ¿Eres cliente? <Link to="/portal" className="link">Ir al Portal</Link>
           </div>
