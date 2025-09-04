@@ -2,11 +2,47 @@
 <html lang="es" data-theme="lacubierta">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+
+    <title>La Cubierta Barbería — Axioma Creativa</title>
+    <meta
+      name="description"
+      content="Agenda, fidelización y mensajería para barberías. La Cubierta Barbería — Axioma Creativa."
+    />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0e7490" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b5566" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Axioma Partner" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="icon" href="/icons/icon-192.png" sizes="192x192" />
+    <link rel="icon" href="/icons/icon-512.png" sizes="512x512" />
+    <!-- (opcional) favicon svg de Vite como fallback -->
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>La Cubierta Barbería- Axioma Creativa</title>
+
+    <!-- Social -->
+    <meta property="og:title" content="La Cubierta Barbería — Axioma Creativa" />
+    <meta
+      property="og:description"
+      content="Agenda, fidelización y mensajería para barberías."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:url" content="https://partner-web.stacks.axioma-creativa.es/" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
+
   <body>
+    <noscript>
+      Necesitas habilitar JavaScript para usar esta aplicación.
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,153 +1,83 @@
-// partner-web/src/layout/AppLayout.tsx
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ReactNode, useMemo } from "react";
+import { PropsWithChildren } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
-import { useSession, clearSession } from "@/shared/auth";
+import { useSession, clearSession, isAdmin } from "@/shared/auth";
 
-type Props = {
+type Props = PropsWithChildren<{
   title?: string;
-  subtitle?: React.ReactNode;
-  children: ReactNode;
-};
+  subtitle?: string;
+}>;
 
-export default function AppLayout({ title, subtitle, children }: Props) {
+export default function AppLayout({ children, title, subtitle }: Props) {
   const nav = useNavigate();
-  const { pathname } = useLocation();
+  const { name, email, role, token } = useSession();
+  const isAuth = !!token;
+  const admin = isAdmin(role);
 
-  // useSession ahora expone campos planos
-  const s = useSession();
-  const isAuth = !!s.token;
-  const email = s.email || "";
-  const initials = useMemo(() => (s.name || email || BRAND.shortName)
-    .trim()
-    .slice(0, 2)
-    .toUpperCase(), [s.name, email]);
-
-  const onLogout = () => {
+  const logout = () => {
     clearSession();
     nav("/login", { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-base-200">
-      {/* Topbar */}
-      <header className="navbar sticky top-0 z-40 bg-base-100/90 backdrop-blur border-b">
-        {/* Brand */}
-        <div className="flex-1 gap-3">
-          <Link to="/" className="btn btn-ghost gap-3 px-2">
-            <img
-              src={BRAND.logoUrl}
-              alt={BRAND.name}
-              className="h-6 w-auto sm:h-7"
-              loading="eager"
-              decoding="async"
-            />
-            <span className="font-semibold hidden sm:inline">
-              {BRAND.shortName}
-            </span>
+      {/* Top bar */}
+      <div className="navbar bg-base-100 border-b sticky top-0 z-40">
+        <div className="flex-1">
+          <Link to="/" className="btn btn-ghost normal-case text-lg gap-2">
+            <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
+            <span className="hidden sm:inline">{BRAND.shortName}</span>
           </Link>
-
-          {/* Tabs (scrollables en móvil) */}
-          <nav className="hidden sm:flex items-center">
-            <ul className="menu menu-horizontal px-0">
-              <li>
-                <NavLink
-                  to="/app/customers"
-                  className={({ isActive }) =>
-                    `rounded-btn ${isActive || pathname.startsWith("/app/customers")
-                      ? "bg-base-200 font-medium"
-                      : "hover:bg-base-200"}`
-                  }
-                >
-                  Clientes
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/app"
-                  end
-                  className={({ isActive }) =>
-                    `rounded-btn ${isActive && pathname === "/app"
-                      ? "bg-base-200 font-medium"
-                      : "hover:bg-base-200"}`
-                  }
-                >
-                  Staff
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/app/admin"
-                  className={({ isActive }) =>
-                    `rounded-btn ${isActive || pathname.startsWith("/app/admin")
-                      ? "bg-base-200 font-medium"
-                      : "hover:bg-base-200"}`
-                  }
-                >
-                  Admin
-                </NavLink>
-              </li>
-            </ul>
-          </nav>
+          <div className="tabs tabs-boxed ml-2">
+            <NavLink to="/app/customers" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Clientes</NavLink>
+            <NavLink to="/app" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Staff</NavLink>
+            <NavLink to="/app/admin" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Admin</NavLink>
+          </div>
         </div>
 
-        {/* Usuario / Login */}
+        {/* Perfil */}
         <div className="flex-none">
           {isAuth ? (
             <div className="dropdown dropdown-end">
-              <label tabIndex={0} className="btn btn-ghost gap-2">
+              <div tabIndex={0} role="button" className="btn btn-ghost">
                 <div className="avatar placeholder">
-                  <div className="bg-primary text-primary-content rounded-full w-8">
-                    <span className="text-sm">{initials}</span>
+                  <div className="bg-neutral text-neutral-content rounded-full w-7">
+                    <span>{(name || email || "A").slice(0, 1).toUpperCase()}</span>
                   </div>
                 </div>
-                <span className="hidden md:inline text-sm truncate max-w-40">
-                  {email}
-                </span>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="size-4 opacity-60"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.233l3.71-4.004a.75.75 0 1 1 1.08 1.04l-4.24 4.58a.75.75 0 0 1-1.08 0l-4.24-4.58a.75.75 0 0 1 .02-1.06z"/>
-                </svg>
-              </label>
-              <ul
-                tabIndex={0}
-                className="dropdown-content menu menu-sm bg-base-100 rounded-xl shadow-lg ring-1 ring-base-300 w-64 mt-2 p-2"
-              >
-                <li className="px-3 py-2 text-xs opacity-70 truncate">{email}</li>
+                <span className="ml-2 hidden sm:inline text-sm">{email}</span>
+              </div>
+              <ul tabIndex={0} className="menu dropdown-content bg-base-100 rounded-box z-[1] mt-2 w-64 p-2 shadow">
+                <li className="menu-title">{email}</li>
                 <li><Link to="/app">Ir al panel</Link></li>
-                <li>
-                  <button onClick={onLogout} className="text-error">
-                    Cerrar sesión
-                  </button>
-                </li>
+                {admin && <li><Link to="/app/admin">Administración</Link></li>}
+                <li><button onClick={logout}>Cerrar sesión</button></li>
               </ul>
             </div>
           ) : (
-            <Link to="/login" className="btn btn-primary btn-sm">
-              Iniciar sesión
-            </Link>
+            <Link to="/login" className="btn btn-primary btn-sm">Entrar</Link>
           )}
         </div>
-      </header>
+      </div>
 
-      {/* Encabezado de página */}
+      {/* Cabecera de página */}
       {(title || subtitle) && (
-        <div className="max-w-6xl mx-auto w-full px-4 pt-5">
-          {title && (
-            <h1 className="text-xl sm:text-2xl font-semibold">
-              {BRAND.name} — {title}
-            </h1>
-          )}
-          {subtitle && <p className="text-sm opacity-70 mt-1">{subtitle}</p>}
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          {title && <h1 className="text-xl font-semibold">{title}</h1>}
+          {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
         </div>
       )}
 
       {/* Contenido */}
-      <main className="max-w-6xl mx-auto w-full p-4">{children}</main>
+      <div className="max-w-6xl mx-auto p-4">{children}</div>
+
+      {/* Pie */}
+      <footer className="mt-10 border-t py-6 text-center text-xs opacity-70">
+        © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name} ·{" "}
+        <a className="link" href="/legal/privacidad">Privacidad</a> ·{" "}
+        <a className="link" href="/legal/aviso">Aviso legal</a> ·{" "}
+        <a className="link" href="/legal/cookies">Cookies</a>
+      </footer>
     </div>
   );
 }
