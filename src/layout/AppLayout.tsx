@@ -1,7 +1,8 @@
-import { Link, useNavigate } from "react-router-dom";
-import { ReactNode, useState } from "react";
+// partner-web/src/layout/AppLayout.tsx
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { ReactNode, useMemo } from "react";
 import { BRAND } from "@/shared/brand";
-import { useSession, clearSession, isAdmin } from "@/shared/auth";
+import { useSession, clearSession } from "@/shared/auth";
 
 type Props = {
   title?: string;
@@ -10,13 +11,17 @@ type Props = {
 };
 
 export default function AppLayout({ title, subtitle, children }: Props) {
-  const s = useSession();
   const nav = useNavigate();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
 
+  // useSession ahora expone campos planos
+  const s = useSession();
   const isAuth = !!s.token;
-  const displayName = s.name || s.email || "Cuenta";
-  const admin = isAdmin(s.role);
+  const email = s.email || "";
+  const initials = useMemo(() => (s.name || email || BRAND.shortName)
+    .trim()
+    .slice(0, 2)
+    .toUpperCase(), [s.name, email]);
 
   const onLogout = () => {
     clearSession();
@@ -26,18 +31,9 @@ export default function AppLayout({ title, subtitle, children }: Props) {
   return (
     <div className="min-h-screen bg-base-200">
       {/* Topbar */}
-      <header className="navbar bg-base-100 border-b sticky top-0 z-40">
+      <header className="navbar sticky top-0 z-40 bg-base-100/90 backdrop-blur border-b">
+        {/* Brand */}
         <div className="flex-1 gap-3">
-          <button
-            className="btn btn-ghost btn-square md:hidden"
-            aria-label="Abrir menú"
-            onClick={() => setMobileOpen(true)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeWidth="1.8" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
-            </svg>
-          </button>
-
           <Link to="/" className="btn btn-ghost gap-3 px-2">
             <img
               src={BRAND.logoUrl}
@@ -46,75 +42,112 @@ export default function AppLayout({ title, subtitle, children }: Props) {
               loading="eager"
               decoding="async"
             />
-            <span className="font-semibold hidden sm:inline">{BRAND.shortName}</span>
+            <span className="font-semibold hidden sm:inline">
+              {BRAND.shortName}
+            </span>
           </Link>
+
+          {/* Tabs (scrollables en móvil) */}
+          <nav className="hidden sm:flex items-center">
+            <ul className="menu menu-horizontal px-0">
+              <li>
+                <NavLink
+                  to="/app/customers"
+                  className={({ isActive }) =>
+                    `rounded-btn ${isActive || pathname.startsWith("/app/customers")
+                      ? "bg-base-200 font-medium"
+                      : "hover:bg-base-200"}`
+                  }
+                >
+                  Clientes
+                </NavLink>
+              </li>
+              <li>
+                <NavLink
+                  to="/app"
+                  end
+                  className={({ isActive }) =>
+                    `rounded-btn ${isActive && pathname === "/app"
+                      ? "bg-base-200 font-medium"
+                      : "hover:bg-base-200"}`
+                  }
+                >
+                  Staff
+                </NavLink>
+              </li>
+              <li>
+                <NavLink
+                  to="/app/admin"
+                  className={({ isActive }) =>
+                    `rounded-btn ${isActive || pathname.startsWith("/app/admin")
+                      ? "bg-base-200 font-medium"
+                      : "hover:bg-base-200"}`
+                  }
+                >
+                  Admin
+                </NavLink>
+              </li>
+            </ul>
+          </nav>
         </div>
 
-        <nav className="flex-none hidden md:flex gap-1">
-          <Link to="/portal" className="btn btn-ghost btn-sm">Clientes</Link>
-          <Link to="/app" className="btn btn-ghost btn-sm">Staff</Link>
-          {admin && <Link to="/app/admin" className="btn btn-primary btn-sm">Admin</Link>}
-        </nav>
-
-        {/* Cuenta / Logout */}
+        {/* Usuario / Login */}
         <div className="flex-none">
           {isAuth ? (
             <div className="dropdown dropdown-end">
-              <label tabIndex={0} className="btn btn-ghost btn-sm">
-                {displayName}
+              <label tabIndex={0} className="btn btn-ghost gap-2">
+                <div className="avatar placeholder">
+                  <div className="bg-primary text-primary-content rounded-full w-8">
+                    <span className="text-sm">{initials}</span>
+                  </div>
+                </div>
+                <span className="hidden md:inline text-sm truncate max-w-40">
+                  {email}
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="size-4 opacity-60"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.233l3.71-4.004a.75.75 0 1 1 1.08 1.04l-4.24 4.58a.75.75 0 0 1-1.08 0l-4.24-4.58a.75.75 0 0 1 .02-1.06z"/>
+                </svg>
               </label>
-              <ul tabIndex={0} className="menu dropdown-content bg-base-100 rounded-box shadow p-2 mt-2 w-52 border">
-                <li className="menu-title px-2">{s.email}</li>
+              <ul
+                tabIndex={0}
+                className="dropdown-content menu menu-sm bg-base-100 rounded-xl shadow-lg ring-1 ring-base-300 w-64 mt-2 p-2"
+              >
+                <li className="px-3 py-2 text-xs opacity-70 truncate">{email}</li>
                 <li><Link to="/app">Ir al panel</Link></li>
-                <li><button onClick={onLogout}>Cerrar sesión</button></li>
+                <li>
+                  <button onClick={onLogout} className="text-error">
+                    Cerrar sesión
+                  </button>
+                </li>
               </ul>
             </div>
           ) : (
-            <Link to="/login" className="btn btn-primary btn-sm">Entrar</Link>
+            <Link to="/login" className="btn btn-primary btn-sm">
+              Iniciar sesión
+            </Link>
           )}
         </div>
       </header>
 
-      {/* Page header */}
+      {/* Encabezado de página */}
       {(title || subtitle) && (
         <div className="max-w-6xl mx-auto w-full px-4 pt-5">
-          {title && <h1 className="text-xl sm:text-2xl font-semibold">{BRAND.name} — {title}</h1>}
+          {title && (
+            <h1 className="text-xl sm:text-2xl font-semibold">
+              {BRAND.name} — {title}
+            </h1>
+          )}
           {subtitle && <p className="text-sm opacity-70 mt-1">{subtitle}</p>}
         </div>
       )}
 
-      {/* Content */}
+      {/* Contenido */}
       <main className="max-w-6xl mx-auto w-full p-4">{children}</main>
-
-      {/* Mobile sheet */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-base-300/60 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-80 bg-base-100 shadow-xl p-4 border-r">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm opacity-70">{BRAND.shortName}</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setMobileOpen(false)} aria-label="Cerrar">✕</button>
-            </div>
-
-            <p className="menu-title">Accesos</p>
-            <ul className="menu rounded-box mb-2">
-              <li><Link to="/portal" onClick={() => setMobileOpen(false)}>Clientes</Link></li>
-              <li><Link to="/app" onClick={() => setMobileOpen(false)}>Staff</Link></li>
-              {admin && <li><Link to="/app/admin" onClick={() => setMobileOpen(false)}>Admin</Link></li>}
-            </ul>
-
-            {isAuth && (
-              <>
-                <p className="menu-title">Cuenta</p>
-                <ul className="menu rounded-box">
-                  <li className="disabled"><span>{displayName}</span></li>
-                  <li><button onClick={() => { setMobileOpen(false); onLogout(); }}>Cerrar sesión</button></li>
-                </ul>
-              </>
-            )}
-          </aside>
-        </div>
-      )}
     </div>
   );
 }
