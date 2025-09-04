@@ -8,35 +8,18 @@ import {
   addVisit,
   resendCustomerQr,
   deleteCustomer,
+  getCustomer,
+  type CustomerLite,
 } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 
-// ---- Tipos locales (alineados con el schema) ----
-export type Visit = {
-  id: string;
-  visitedAt: string; // ISO
-  notes?: string | null;
-};
+export type Visit = { id: string; visitedAt: string; notes?: string | null };
+export type Reward = { id: string; issuedAt: string; redeemedAt?: string | null; note?: string | null; status: "PENDING" | "REDEEMED" | "EXPIRED" };
 
-export type Reward = {
-  id: string;
-  issuedAt: string; // ISO
-  redeemedAt?: string | null;
-  note?: string | null;
-  status: "PENDING" | "REDEEMED" | "EXPIRED";
-};
-
-// Utilidades
 function fmt(d?: string | null) {
   if (!d) return "—";
-  try {
-    const dt = new Date(d);
-    const locale =
-      (typeof navigator !== "undefined" && navigator.language) || "es-ES";
-    return dt.toLocaleString(locale);
-  } catch {
-    return d || "—";
-  }
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? d : dt.toLocaleString();
 }
 
 export default function CustomerDetail() {
@@ -44,24 +27,22 @@ export default function CustomerDetail() {
   const nav = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
-  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(
-    (role || "").toString()
-  );
+  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes((role || "").toString());
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  const [customer, setCustomer] = useState<CustomerLite | null>(null);
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [addingVisit, setAddingVisit] = useState(false);
   const [sendingQr, setSendingQr] = useState(false);
 
-  // Título simple usando el id
-  const headerTitle = useMemo(
-    () => `Cliente — ${id?.slice(0, 8) ?? ""}`,
-    [id]
-  );
+  const headerTitle = useMemo(() => {
+    const fallback = id?.slice(0, 8) ?? "";
+    return `Cliente — ${customer?.name || fallback}`;
+  }, [id, customer]);
 
   useEffect(() => {
     if (!id) return;
@@ -70,26 +51,22 @@ export default function CustomerDetail() {
     setErr("");
 
     (async () => {
-      try {
-        const [r, v] = await Promise.all([
-          getCustomerRewards(id),
-          getCustomerVisits(id),
-        ]);
-        if (!alive) return;
+      const [c, r, v] = await Promise.allSettled([
+        getCustomer(id),
+        getCustomerRewards(id),
+        getCustomerVisits(id),
+      ]);
 
-        // Casts seguros: si no son arrays, caen en []
-        setRewards(Array.isArray(r) ? (r as Reward[]) : []);
-        setVisits(Array.isArray(v) ? (v as Visit[]) : []);
-      } catch (e: any) {
-        if (!alive) return;
-        setErr(
-          e?.response?.data?.message ||
-            e?.message ||
-            "No se pudieron cargar los datos del cliente."
-        );
-      } finally {
-        if (alive) setLoading(false);
+      if (!alive) return;
+
+      if (c.status === "fulfilled") setCustomer(c.value);
+      if (r.status === "fulfilled" && Array.isArray(r.value)) setRewards(r.value as Reward[]);
+      if (v.status === "fulfilled" && Array.isArray(v.value)) setVisits(v.value as Visit[]);
+
+      if (r.status === "rejected" || v.status === "rejected") {
+        setErr("No se pudieron cargar los datos del cliente.");
       }
+      setLoading(false);
     })();
 
     return () => {
@@ -104,13 +81,8 @@ export default function CustomerDetail() {
       await addVisit(id, "Visita manual");
       const v = await getCustomerVisits(id);
       setVisits(Array.isArray(v) ? (v as Visit[]) : []);
-      setErr(""); // limpiar error previo si lo hubiera
     } catch (e: any) {
-      setErr(
-        e?.response?.data?.message ||
-          e?.message ||
-          "No se pudo registrar la visita."
-      );
+      setErr(e?.response?.data?.message || e?.message || "No se pudo registrar la visita.");
     } finally {
       setAddingVisit(false);
     }
@@ -121,14 +93,9 @@ export default function CustomerDetail() {
     try {
       setSendingQr(true);
       await resendCustomerQr(id);
-      setErr(""); // limpiar error previo
       alert("QR reenviado (si el proveedor está configurado).");
     } catch (e: any) {
-      setErr(
-        e?.response?.data?.message ||
-          e?.message ||
-          "No se pudo reenviar el QR."
-      );
+      setErr(e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.");
     } finally {
       setSendingQr(false);
     }
@@ -136,24 +103,22 @@ export default function CustomerDetail() {
 
   async function onDelete() {
     if (!id || !canDelete) return;
-    const ok = confirm("¿Eliminar definitivamente este cliente?");
+    const ok = confirm(`¿Eliminar definitivamente ${customer?.name || "este cliente"}?`);
     if (!ok) return;
     try {
       setDeleting(true);
       await deleteCustomer(id);
       nav("/app/customers", { replace: true });
     } catch (e: any) {
-      setErr(
-        e?.response?.data?.message ||
-          e?.message ||
-          "No se pudo eliminar el cliente."
-      );
+      const msg =
+        e?.status === 403
+          ? "No tienes permiso para eliminar (usa un usuario ADMIN u OWNER)."
+          : e?.message || "No se pudo eliminar el cliente.";
+      setErr(msg);
     } finally {
       setDeleting(false);
     }
   }
-
-  const anyBusy = deleting || addingVisit || sendingQr;
 
   return (
     <AppLayout title={headerTitle} subtitle="Detalle del cliente">
@@ -163,41 +128,23 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {/* Acciones rápidas */}
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-ghost btn-sm" aria-label="Volver al listado">
-          ← Volver al listado
-        </Link>
-        <button
-          onClick={onAddVisit}
-          className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
-          disabled={anyBusy || !id}
-        >
+        <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver al listado</Link>
+        <button onClick={onAddVisit} className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`} disabled={addingVisit || !id}>
           {addingVisit ? "" : "Añadir visita"}
         </button>
-        <button
-          onClick={onResendQr}
-          className={`btn btn-outline btn-sm ${sendingQr ? "loading" : ""}`}
-          disabled={anyBusy || !id}
-        >
+        <button onClick={onResendQr} className={`btn btn-outline btn-sm ${sendingQr ? "loading" : ""}`} disabled={sendingQr || !id}>
           {sendingQr ? "" : "Reenviar QR"}
         </button>
         {canDelete && (
-          <button
-            onClick={onDelete}
-            className={`btn btn-error btn-sm ${deleting ? "loading" : ""}`}
-            disabled={anyBusy}
-          >
+          <button onClick={onDelete} className={`btn btn-error btn-sm ${deleting ? "loading" : ""}`} disabled={deleting}>
             {deleting ? "" : "Eliminar cliente"}
           </button>
         )}
       </div>
 
       {loading ? (
-        <div className="p-4 flex items-center gap-2">
-          <span className="loading loading-spinner" />
-          Cargando…
-        </div>
+        <div className="p-4 flex items-center gap-2"><span className="loading loading-spinner" />Cargando…</div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
           {/* Visitas */}
@@ -209,12 +156,7 @@ export default function CustomerDetail() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-compact">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Notas</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>Fecha</th><th>Notas</th></tr></thead>
                     <tbody>
                       {visits.map((v) => (
                         <tr key={v.id}>
@@ -238,20 +180,11 @@ export default function CustomerDetail() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-compact">
-                    <thead>
-                      <tr>
-                        <th>Estado</th>
-                        <th>Emitida</th>
-                        <th>Canjeada</th>
-                        <th>Nota</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>Estado</th><th>Emitida</th><th>Canjeada</th><th>Nota</th></tr></thead>
                     <tbody>
                       {rewards.map((r) => (
                         <tr key={r.id}>
-                          <td>
-                            <span className="badge badge-outline">{r.status}</span>
-                          </td>
+                          <td><span className="badge badge-outline">{r.status}</span></td>
                           <td>{fmt(r.issuedAt)}</td>
                           <td>{fmt(r.redeemedAt)}</td>
                           <td>{r.note || "—"}</td>
@@ -266,12 +199,7 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {/* Pie mínimamente informativo */}
-      {!admin && (
-        <p className="text-xs opacity-60 mt-6">
-          Algunas columnas pueden estar ocultas según tu rol.
-        </p>
-      )}
+      {!admin && <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>}
     </AppLayout>
   );
 }
