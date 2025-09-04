@@ -11,9 +11,15 @@ import type { UserRole } from "./auth";
 
 const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
 
+function stripTrailingSlashes(u: string) {
+  return u.replace(/\/+$/, "");
+}
+
 function computeBaseURL(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
-  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") return viteEnv;
+  if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") {
+    return stripTrailingSlashes(viteEnv);
+  }
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
@@ -40,6 +46,19 @@ api.interceptors.request.use((config) => {
   config.headers = headers;
   return config;
 });
+
+// (Opcional) manejar 401 globalmente
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    const status = err?.response?.status;
+    if (status === 401) {
+      // Si la sesión expiró, envía al login
+      window.location.assign("/login");
+    }
+    return Promise.reject(err);
+  }
+);
 
 /**
  * ===========================================
@@ -82,36 +101,112 @@ portalApi.interceptors.request.use((config) => {
 
 /**
  * ===========================================
+ *  Utils/helpers comunes
+ * ===========================================
+ */
+
+function asArray<T = any>(data: any): T[] {
+  return (Array.isArray(data) ? data : data?.items ?? data?.data ?? []) || [];
+}
+
+async function axGet<T>(path: string): Promise<T> {
+  const r = await api.get(path, { validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) return r.data as T;
+  throw new Error(`HTTP ${r.status}`);
+}
+
+async function axDelete(path: string): Promise<void> {
+  const r = await api.delete(path, { validateStatus: () => true });
+  if (r.status === 204 || (r.status >= 200 && r.status < 300)) return;
+  throw new Error(`HTTP ${r.status}`);
+}
+
+/**
+ * ===========================================
+ *  Helpers AUTH (panel)
+ * ===========================================
+ */
+
+export type Me = {
+  id: string;
+  email: string;
+  role: UserRole;
+  name?: string;
+  businessId?: string;
+};
+
+/**
+ * Devuelve el usuario autenticado.
+ * Prueba varias rutas típicas para mayor compatibilidad.
+ */
+export async function getMe(): Promise<Me | null> {
+  const candidates = ["/auth/me", "/users/me", "/me"];
+  for (const p of candidates) {
+    try {
+      const r = await api.get(p, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300 && r.data) return r.data as Me;
+      if (r.status === 404) continue;
+    } catch {
+      // intenta la siguiente
+    }
+  }
+  return null;
+}
+
+/**
+ * ===========================================
  *  Helpers STAFF/ADMIN (panel)
  * ===========================================
  */
 
 type CreatedCustomer = { id: string; name: string; existed?: boolean };
 
+export type UserLite = { id: string; email: string; role: UserRole };
+
 // Crear cliente (el backend toma el businessId del JWT)
 export const createCustomer = (name: string, phone: string) =>
   api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
 
-/** ===== Usuarios (staff/admin) ===== */
-export type UserLite = { id: string; email: string; role: UserRole };
-
 // Listar usuarios
 export const listUsers = () =>
-  api.get("/users").then((r) =>
-    Array.isArray(r.data) ? (r.data as UserLite[]) : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
-  );
+  api
+    .get("/users", { validateStatus: () => true })
+    .then((r) => asArray<UserLite>(r.data));
 
 // Crear usuario (alias de createStaff)
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
 
-// Mantengo también el helper previo por compatibilidad
+// Compat: helper previo
 export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
   api.post("/users", { email, password, role }).then((r) => r.data);
 
-// Listar clientes
+// Listar clientes (con fallback de estructura)
 export const listCustomers = () =>
-  api.get("/customers").then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
+  api
+    .get("/customers", { validateStatus: () => true })
+    .then((r) => asArray(r.data));
+
+// Eliminar cliente (DELETE) con fallback de ruta
+export async function deleteCustomer(id: string): Promise<void> {
+  const pid = encodeURIComponent(id);
+  const candidates = [`/customers/${pid}`, `/app/customers/${pid}`];
+  let lastError: unknown = null;
+
+  for (const p of candidates) {
+    try {
+      await axDelete(p);
+      return;
+    } catch (e: any) {
+      lastError = e;
+      // Si el endpoint no existe (404), probamos el siguiente
+      if (String(e?.message || "").includes("HTTP 404")) continue;
+      throw e;
+    }
+  }
+
+  if (lastError) throw lastError;
+}
 
 // Añadir visita (suma “puntos”)
 export const addVisit = (customerId: string, notes?: string) =>
@@ -119,15 +214,15 @@ export const addVisit = (customerId: string, notes?: string) =>
 
 // Recompensas del cliente
 export const getCustomerRewards = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/rewards`).then((r) => r.data);
+  axGet(`/customers/${encodeURIComponent(customerId)}/rewards`);
 
 // Visitas del cliente
 export const getCustomerVisits = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/visits`).then((r) => r.data);
+  axGet(`/customers/${encodeURIComponent(customerId)}/visits`);
 
 // Progreso hacia la siguiente recompensa
 export const getCustomerProgress = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/progress`).then((r) => r.data);
+  axGet(`/customers/${encodeURIComponent(customerId)}/progress`);
 
 // URL pública del PNG del QR (sin JWT)
 export const publicCustomerQrUrl = (customerId: string) =>
@@ -141,8 +236,7 @@ export const publicCustomerQrUrl = (customerId: string) =>
 
 // Solicitar OTP por móvil o correo
 export async function requestCustomerOtp(body: { phone?: string; email?: string }) {
-  const url = "/portal/otp/request";
-  const r = await axios.post(baseURL + url, body, {
+  const r = await axios.post(`${baseURL}/portal/otp/request`, body, {
     headers: { "Content-Type": "application/json" },
     validateStatus: () => true,
   });
@@ -152,8 +246,7 @@ export async function requestCustomerOtp(body: { phone?: string; email?: string 
 
 // Verificar OTP y devolver token del portal
 export async function verifyCustomerOtp(body: { phone?: string; email?: string; code: string }) {
-  const url = "/portal/otp/verify";
-  const r = await axios.post(baseURL + url, body, {
+  const r = await axios.post(`${baseURL}/portal/otp/verify`, body, {
     headers: { "Content-Type": "application/json" },
     validateStatus: () => true,
   });
@@ -203,7 +296,7 @@ export async function lookupCustomer(input: LookupInput): Promise<CustomerLite |
     // continúa al fallback
   }
 
-  // 2) Fallback: traer lista y filtrar (no ideal, pero funciona en dev)
+  // 2) Fallback: traer lista y filtrar (no ideal, pero útil en dev)
   try {
     const list = await listCustomers();
     const phoneNorm = (body.phone || "").replace(/\D/g, "");
