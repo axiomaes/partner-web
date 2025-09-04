@@ -17,7 +17,7 @@ const AUTH_PATHS: string[] = (
   import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login"
 )
   .split(",")
-  .map((p: string) => p.trim())
+  .map((p) => p.trim())
   .filter(Boolean);
 
 function parseJwt(token: string): JwtClaims | null {
@@ -39,10 +39,10 @@ export default function LoginStaff() {
   const location = useLocation() as any;
 
   const afterLogin = () => {
-    const to = location.state?.from || "/app";
-    // navegación normal
+    const from: string | undefined = location.state?.from;
+    const to = !from || from.startsWith("/login") ? "/app" : from;
     nav(to, { replace: true });
-    // plan B (por si algún guard queda antiguo en memoria del router)
+    // plan B, por si el router no cambia de vista
     // window.location.assign(to);
   };
 
@@ -55,12 +55,9 @@ export default function LoginStaff() {
         headers: { "Content-Type": "application/json" },
         body,
       });
-
-      if (res.status === 404) continue;
+      if (res.status === 404) continue;        // probar siguiente endpoint
       if (res.status === 401) throw new Error("Credenciales inválidas.");
-      if (!res.ok && res.status !== 201) {
-        throw new Error(`Error del servidor (código ${res.status}).`);
-      }
+      if (!res.ok && res.status !== 201) throw new Error(`Error del servidor (código ${res.status}).`);
       return await res.json();
     }
     throw new Error("No se encontró el endpoint de autenticación (404). Revisa VITE_API_BASE o VITE_API_AUTH_PATHS.");
@@ -73,7 +70,6 @@ export default function LoginStaff() {
 
     try {
       const data = await tryLogin();
-
       const token: string = (data as any).access_token || (data as any).token;
       if (!token) throw new Error("Respuesta sin token.");
 
@@ -113,7 +109,7 @@ export default function LoginStaff() {
       <div className="card w-full max-w-sm bg-base-100 shadow">
         <div className="card-body">
           <div className="flex items-center gap-2 mb-2">
-            <img src={BRand.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
+            <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
             <h1 className="text-lg font-semibold">Acceso Staff</h1>
           </div>
 
