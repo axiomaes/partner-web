@@ -1,7 +1,8 @@
 // partner-web/src/layout/AppLayout.tsx
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ReactNode } from "react";
 import { BRAND } from "@/shared/brand";
+import { useSession, clearSession } from "@/shared/auth";
 
 type Props = {
   title?: string;
@@ -10,6 +11,14 @@ type Props = {
 };
 
 export default function AppLayout({ title, subtitle, children }: Props) {
+  const nav = useNavigate();
+  const { isAuth, user } = useSession();
+
+  const onLogout = () => {
+    clearSession();
+    nav("/login", { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-base-200">
       {/* Topbar */}
@@ -29,10 +38,36 @@ export default function AppLayout({ title, subtitle, children }: Props) {
           </Link>
         </div>
 
-        <nav className="flex-none gap-1">
-          <Link to="/portal" className="btn btn-ghost btn-sm">Clientes</Link>
-          <Link to="/app" className="btn btn-ghost btn-sm">Staff</Link>
-          <Link to="/app/admin" className="btn btn-primary btn-sm">Admin</Link>
+        <nav className="flex-none items-center gap-1">
+          {/* enlaces “rápidos” */}
+          <Link to="/portal" className="btn btn-ghost btn-sm">
+            Clientes
+          </Link>
+          <Link to="/app" className="btn btn-ghost btn-sm">
+            Staff
+          </Link>
+          <Link to="/app/admin" className="btn btn-primary btn-sm">
+            Admin
+          </Link>
+
+          {/* separador */}
+          <span className="mx-1 opacity-30">|</span>
+
+          {/* estado sesión */}
+          {isAuth ? (
+            <>
+              <span className="hidden md:inline text-xs opacity-70 mr-1">
+                {user?.email}
+              </span>
+              <button onClick={onLogout} className="btn btn-outline btn-sm">
+                Cerrar sesión
+              </button>
+            </>
+          ) : (
+            <Link to="/login" className="btn btn-outline btn-sm">
+              Iniciar sesión
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -50,31 +85,6 @@ export default function AppLayout({ title, subtitle, children }: Props) {
 
       {/* Content */}
       <main className="max-w-6xl mx-auto w-full p-4">{children}</main>
-
-      {/* Footer */}
-      <footer className="max-w-6xl mx-auto w-full px-4 pb-8">
-        <div className="mt-8 border-t border-base-300 pt-6 text-sm text-base-content/70">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <span>
-              © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}
-            </span>
-
-            <nav className="flex flex-wrap items-center gap-x-4">
-              <Link to="/legal/privacidad" className="link link-primary link-hover">
-                Privacidad
-              </Link>
-              <span className="text-base-content/40">·</span>
-              <Link to="/legal/aviso-legal" className="link link-primary link-hover">
-                Aviso legal
-              </Link>
-              <span className="text-base-content/40">·</span>
-              <Link to="/legal/cookies" className="link link-primary link-hover">
-                Cookies
-              </Link>
-            </nav>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
