@@ -2,34 +2,26 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
+import { useSession, clearSession } from "@/shared/auth";
 
 export default function Home() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const nav = useNavigate();
+  const { isAuth, user } = useSession();
 
-  // Cierra el drawer al navegar
   useEffect(() => setOpen(false), [pathname]);
 
-  // Evita scroll del body cuando el drawer está abierto
-  useEffect(() => {
-    const original = document.body.style.overflow;
-    if (open) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = original || "";
-    return () => {
-      document.body.style.overflow = original || "";
-    };
-  }, [open]);
+  const go = (to: string) => {
+    setOpen(false);
+    nav(to);
+  };
 
-  // Cerrar con ESC
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  const onLogout = () => {
+    clearSession();
+    setOpen(false);
+    nav("/login", { replace: true });
+  };
 
   return (
     <div className="min-h-screen bg-base-200 flex">
@@ -64,10 +56,10 @@ export default function Home() {
               className="btn btn-ghost btn-square"
               onClick={() => setOpen(true)}
               aria-label="Abrir menú"
-              aria-controls="mobile-drawer"
-              aria-expanded={open}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
             </button>
             <Link to="/" className="btn btn-ghost text-lg normal-case gap-2">
               <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
@@ -77,36 +69,96 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Drawer móvil */}
+      {/* Drawer móvil profesional */}
       {open && (
-        <div className="md:hidden fixed inset-0 z-50" id="mobile-drawer" role="dialog" aria-modal="true">
-          {/* Overlay oscuro + blur */}
+        <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true">
+          {/* overlay más oscuro y con blur para legibilidad */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          {/* Panel */}
-          <aside
-            className="absolute left-0 top-0 h-full w-[85%] max-w-80 bg-base-100 shadow-2xl border-r border-base-300 p-4
-                       translate-x-0 transition-transform duration-200 will-change-transform"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm opacity-70">{BRAND.shortName}</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Cerrar">✕</button>
+          {/* panel */}
+          <aside className="relative h-full w-[85%] max-w-96 bg-base-100 border-r border-base-300 shadow-2xl p-4">
+            {/* header del panel */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
+                <span className="font-medium">{BRAND.shortName}</span>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setOpen(false)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
             </div>
 
             <p className="menu-title">Accesos</p>
             <ul className="menu rounded-box mb-2">
-              <li><Link to="/portal" onClick={() => setOpen(false)}>Acceso Clientes</Link></li>
-              <li><Link to="/app" onClick={() => setOpen(false)}>Acceso Staff</Link></li>
-              <li><Link to="/app/admin" onClick={() => setOpen(false)}>Administrador</Link></li>
+              <li>
+                <button
+                  className="justify-start text-base-content"
+                  onClick={() => go("/portal")}
+                >
+                  Acceso Clientes
+                </button>
+              </li>
+              <li>
+                <button
+                  className="justify-start text-base-content"
+                  onClick={() => go("/app")}
+                >
+                  Acceso Staff
+                </button>
+              </li>
+              <li>
+                <button
+                  className="justify-start text-base-content"
+                  onClick={() => go("/app/admin")}
+                >
+                  Administrador
+                </button>
+              </li>
             </ul>
 
             <p className="menu-title">Información</p>
             <ul className="menu rounded-box">
-              <li><a href="#reservas" onClick={() => setOpen(false)}>Reservas y turnos</a></li>
-              <li><a href="#fidelizacion" onClick={() => setOpen(false)}>Clientes fieles</a></li>
+              <li>
+                <a
+                  className="justify-start text-base-content"
+                  href="#reservas"
+                  onClick={() => setOpen(false)}
+                >
+                  Reservas y turnos
+                </a>
+              </li>
+              <li>
+                <a
+                  className="justify-start text-base-content"
+                  href="#fidelizacion"
+                  onClick={() => setOpen(false)}
+                >
+                  Clientes fieles
+                </a>
+              </li>
             </ul>
+
+            {/* pie del menú: estado de sesión */}
+            <div className="mt-4 pt-3 border-t border-base-300">
+              {isAuth ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs opacity-70 truncate">{user?.email}</div>
+                  <button className="btn btn-outline btn-sm" onClick={onLogout}>
+                    Cerrar sesión
+                  </button>
+                </div>
+              ) : (
+                <button className="btn btn-outline btn-sm w-full" onClick={() => go("/login")}>
+                  Iniciar sesión
+                </button>
+              )}
+            </div>
           </aside>
         </div>
       )}
@@ -122,15 +174,25 @@ export default function Home() {
                   <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
                   <h1 className="text-3xl font-bold">{BRAND.name}</h1>
                 </div>
-                <p className="opacity-90 mt-2">Agenda, fidelización y mensajería en un mismo lugar.</p>
+                <p className="opacity-90 mt-2">
+                  Agenda, fidelización y mensajería en un mismo lugar.
+                </p>
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button type="button" onClick={() => nav("/portal")} className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg">
+                  <button
+                    type="button"
+                    onClick={() => nav("/portal")}
+                    className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
+                  >
                     Acceso Clientes
                   </button>
                   <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
-                    <Link to="/app" className="btn btn-outline h-20">Staff</Link>
-                    <Link to="/app/admin" className="btn btn-outline h-20">Administrador</Link>
+                    <Link to="/app" className="btn btn-outline h-20">
+                      Staff
+                    </Link>
+                    <Link to="/app/admin" className="btn btn-outline h-20">
+                      Administrador
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -139,9 +201,13 @@ export default function Home() {
                 <div className="card bg-base-100 text-base-content shadow-md">
                   <div className="card-body">
                     <h3 className="card-title">Hoy</h3>
-                    <p className="text-sm opacity-70">Revisa citas, visitas y recompensas.</p>
+                    <p className="text-sm opacity-70">
+                      Revisa citas, visitas y recompensas.
+                    </p>
                     <div className="card-actions justify-end">
-                      <Link to="/app" className="btn btn-sm btn-primary">Ir al panel</Link>
+                      <Link to="/app" className="btn btn-sm btn-primary">
+                        Ir al panel
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -165,9 +231,9 @@ export default function Home() {
             </div>
           </section>
 
-          <footer className="text-center text-xs opacity-70 py-8 space-x-3">
-            <span>© {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}</span>
-            <a className="link" href="/legal/privacidad">Privacidad</a>
+          <footer className="text-center text-xs opacity-70 py-8 space-x-2">
+            © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name}
+            <a className="link ml-2" href="/legal/privacidad">Privacidad</a>
             <span>·</span>
             <a className="link" href="/legal/aviso">Aviso legal</a>
             <span>·</span>
@@ -178,4 +244,3 @@ export default function Home() {
     </div>
   );
 }
-
