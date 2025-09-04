@@ -1,77 +1,71 @@
-// partner-web/src/shared/auth.ts
-import { useEffect, useState } from "react";
-
+// src/shared/auth.ts
 export type UserRole = "ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN";
 
 export type SessionUser = {
   id: string;
-  name: string;
+  name?: string;
   email: string;
   role: UserRole;
 };
 
-type SessionShape = { user: SessionUser; token: string };
+export type Session = {
+  user: SessionUser;
+  token: string;
+};
 
-const SESSION_KEY = "axioma_session";
+const KEY = "axioma_session";
 
-/** Guarda sesión (panel staff/admin) */
+export function loadSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? (JSON.parse(raw) as Session) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function saveSession(user: SessionUser, token: string) {
-  const data: SessionShape = { user, token };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  const s: Session = { user, token };
+  localStorage.setItem(KEY, JSON.stringify(s));
 }
 
-/** Borra la sesión completa */
 export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(KEY);
 }
 
-/** Devuelve el token del panel o null */
 export function getToken(): string | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SessionShape;
-    return parsed?.token || null;
-  } catch {
-    return null;
-  }
+  return loadSession()?.token ?? null;
 }
 
-/** Devuelve el usuario en sesión o null */
-export function getUser(): SessionUser | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SessionShape;
-    return parsed?.user || null;
-  } catch {
-    return null;
-  }
+// Helpers de rol
+export function isAdmin(role?: string | null): boolean {
+  const r = String(role ?? "").toUpperCase();
+  return r === "ADMIN" || r === "OWNER" || r === "SUPERADMIN";
 }
 
-/** Hook sencillo para leer la sesión y reaccionar a cambios entre pestañas */
+import { useEffect, useMemo, useState } from "react";
+
 export function useSession() {
-  const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [token, setToken] = useState<string | null>(() => getToken());
+  // Hidratación SINCRÓNICA para evitar parpadeo
+  const initial = useMemo(() => loadSession(), []);
+  const [session, setSession] = useState<Session | null>(initial);
 
+  // Sync entre pestañas
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key && e.key !== SESSION_KEY) return;
-      setUser(getUser());
-      setToken(getToken());
+      if (e.key === KEY) setSession(loadSession());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   return {
-    ...((user || {}) as SessionUser),
-    token,
-    isAuth: !!token,
-    user,
+    id: session?.user.id,
+    name: session?.user.name,
+    email: session?.user.email,
+    role: session?.user.role,
+    token: session?.token,
+    // `ready` siempre true porque hidratamos sincrónicamente
+    ready: true,
   };
-}
-
-export function isAdmin(role?: UserRole | string | null) {
-  return ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
 }
