@@ -186,6 +186,24 @@ export async function getMyRewards() {
   return [];
 }
 
+/** Lee el payload del QR y registra una visita */
+export function addVisitFromQrPayload(payload: string) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error("QR inválido: no es JSON.");
+  }
+
+  if (!parsed || parsed.t !== "axioma-visit" || typeof parsed.customerId !== "string") {
+    throw new Error("QR inválido: formato no reconocido.");
+  }
+
+  const notes = typeof parsed.notes === "string" ? parsed.notes : "Visita por QR";
+  return addVisit(parsed.customerId, notes);
+}
+
+
 /** ============= Búsqueda/Check-in staff ============= */
 type LookupInput = { phone?: string; email?: string };
 
