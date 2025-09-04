@@ -1,7 +1,7 @@
 // partner-web/src/pages/Customers.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listCustomers } from "@/shared/api";
+import { listCustomers, deleteCustomer } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 import AppLayout from "@/layout/AppLayout";
 
@@ -18,15 +18,23 @@ function maskEmail(e?: string) {
 export default function CustomersPage() {
   const { role } = useSession();
   const admin = isAdmin(role);
+  const canCreate = ["ADMIN", "BARBER", "OWNER", "SUPERADMIN"].includes(
+    (role || "").toString()
+  );
+  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(
+    (role || "").toString()
+  );
 
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setError("");
     listCustomers()
       .then((data) => {
         if (!alive) return;
@@ -36,11 +44,13 @@ export default function CustomersPage() {
         if (!alive) return;
         setError(
           e?.response?.data?.message ||
-            e.message ||
+            e?.message ||
             "No se pudo cargar el listado."
         );
       })
-      .finally(() => alive && setLoading(false));
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
     return () => {
       alive = false;
     };
@@ -57,12 +67,31 @@ export default function CustomersPage() {
     });
   }, [rows, q]);
 
+  async function onDelete(id: string) {
+    if (!canDelete) return;
+    const row = rows.find((r) => r.id === id);
+    const label = row?.name || "este cliente";
+    const ok = window.confirm(`¿Eliminar definitivamente ${label}?`);
+    if (!ok) return;
+
+    try {
+      setDeletingId(id);
+      await deleteCustomer(id);
+      setRows((prev) => prev.filter((c) => c.id !== id));
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.message ||
+          e?.message ||
+          "No se pudo eliminar el cliente."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <AppLayout title="Clientes" subtitle="Gestión de clientes registrados">
-      {/* DEBUG marker */}
-      <div className="alert alert-info mb-3">DEBUG · Customers.tsx render OK</div>
-
-      {/* Toolbar unificada */}
+      {/* Toolbar */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div className="join w-full md:w-auto">
           <div className="join-item input input-bordered flex items-center gap-2 w-full md:w-80">
@@ -73,7 +102,10 @@ export default function CustomersPage() {
               fill="none"
               stroke="currentColor"
             >
-              <path strokeWidth="2" d="m21 21-3.5-3.5M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />
+              <path
+                strokeWidth="2"
+                d="m21 21-3.5-3.5M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"
+              />
             </svg>
             <input
               value={q}
@@ -85,11 +117,13 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        <div className="flex gap-2 justify-end">
-          <Link to="/app/customers/new" className="btn btn-primary">
-            Nuevo cliente
-          </Link>
-        </div>
+        {canCreate && (
+          <div className="flex gap-2 justify-end">
+            <Link to="/app/customers/new" className="btn btn-primary">
+              Nuevo cliente
+            </Link>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -130,10 +164,24 @@ export default function CustomersPage() {
                   </td>
                   <td className="text-right">
                     <div className="join">
-                      <Link to={`/app/customers/${c.id}`} className="btn btn-ghost btn-xs join-item">
+                      <Link
+                        to={`/app/customers/${c.id}`}
+                        className="btn btn-ghost btn-xs join-item"
+                      >
                         Ver
                       </Link>
-                      {/* Lugar para acciones futuras: Editar, Reenviar QR, etc. */}
+                      {canDelete && (
+                        <button
+                          onClick={() => onDelete(c.id)}
+                          className={`btn btn-error btn-xs join-item ${
+                            deletingId === c.id ? "loading" : ""
+                          }`}
+                          disabled={!!deletingId}
+                          title="Eliminar cliente"
+                        >
+                          {deletingId === c.id ? "" : "Eliminar"}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -143,7 +191,9 @@ export default function CustomersPage() {
               <tr>
                 <td colSpan={4}>
                   <div className="p-6 text-sm text-base-content/60">
-                    {q ? "No hay resultados para tu búsqueda." : "Sin clientes."}
+                    {q
+                      ? "No hay resultados para tu búsqueda."
+                      : "Sin clientes."}
                   </div>
                 </td>
               </tr>
