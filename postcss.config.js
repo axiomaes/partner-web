@@ -1,6 +1,7 @@
-// partner-web/postcss.config.js
-export default {
+// postcss.config.cjs
+module.exports = {
   plugins: {
-    '@tailwindcss/postcss': {}, // Tailwind v4 (incluye lo necesario)
+    tailwindcss: {},
+    autoprefixer: {},
   },
 };
