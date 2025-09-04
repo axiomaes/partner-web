@@ -17,7 +17,7 @@ const AUTH_PATHS: string[] = (
   import.meta.env.VITE_API_AUTH_PATHS || "/auth/login,/api/auth/login,/login"
 )
   .split(",")
-  .map((p) => p.trim())
+  .map((p: string) => p.trim())
   .filter(Boolean);
 
 function parseJwt(token: string): JwtClaims | null {
@@ -42,8 +42,7 @@ export default function LoginStaff() {
     const from: string | undefined = location.state?.from;
     const to = !from || from.startsWith("/login") ? "/app" : from;
     nav(to, { replace: true });
-    // plan B, por si el router no cambia de vista
-    // window.location.assign(to);
+    // window.location.assign(to); // fallback si el router no navega
   };
 
   async function tryLogin(): Promise<{ access_token?: string; token?: string; user?: any }> {
@@ -55,7 +54,7 @@ export default function LoginStaff() {
         headers: { "Content-Type": "application/json" },
         body,
       });
-      if (res.status === 404) continue;        // probar siguiente endpoint
+      if (res.status === 404) continue;
       if (res.status === 401) throw new Error("Credenciales inválidas.");
       if (!res.ok && res.status !== 201) throw new Error(`Error del servidor (código ${res.status}).`);
       return await res.json();
