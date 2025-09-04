@@ -1,30 +1,36 @@
+// src/components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
-import { ReactNode } from "react";
-import { getToken, getUser } from "@/shared/session";
+import { useSession } from "@/shared/auth";
 
 type Props = {
-  roles?: string[];           // p.ej. ["ADMIN","OWNER","SUPERADMIN"]
-  children: ReactNode;
+  roles?: Array<"ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN">;
+  children: React.ReactNode;
 };
 
 export default function ProtectedRoute({ roles, children }: Props) {
-  const location = useLocation();
-  const token = getToken();
-  const user  = getUser();
+  const { token, role, ready } = useSession();
+  const loc = useLocation();
 
-  // Si no hay sesión -> al login, recordando de dónde venía
-  if (!token || !user) {
+  // Bloqueo inicial para evitar falsas redirecciones
+  if (!ready) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <span className="loading loading-spinner" />
+      </div>
+    );
+  }
+
+  if (!token) {
     return (
       <Navigate
         to="/login"
         replace
-        state={{ from: location.pathname + location.search }}
+        state={{ from: loc.pathname + loc.search }}
       />
     );
   }
 
-  // Si hay restricción de roles y el usuario no cumple -> unauthorized
-  if (roles && user.role && !roles.includes(user.role)) {
+  if (roles && role && !roles.includes(role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
