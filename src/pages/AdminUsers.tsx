@@ -15,9 +15,12 @@ export default function AdminUsers() {
   const assignableRoles: Role[] = useMemo(() => {
     if (myRole === "SUPERADMIN") return ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"];
     if (myRole === "OWNER") return ["BARBER", "OWNER"];
-    // ADMIN/BARBER: ninguno (solo lectura)
+    if (myRole === "ADMIN") return ["BARBER", "ADMIN"];
+    // BARBER u otros: solo lectura
     return [];
   }, [myRole]);
+
+  const canWrite = assignableRoles.length > 0; // OWNER, ADMIN o SUPERADMIN
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -35,66 +38,86 @@ export default function AdminUsers() {
     if (assignableRoles.length) setRole(assignableRoles[0]);
   }, [assignableRoles]);
 
-  const load = async () => {
+  async function load() {
     setLoading(true);
     setErr("");
     try {
       const r = await api.get("/users");
-      setUsers(r.data as User[]);
+      setUsers((r.data as User[]) ?? []);
     } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "Internal server error");
+      setErr(e?.response?.data?.message || e?.message || "No se pudo cargar la lista.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return users;
-    return users.filter(u =>
-      (u.email || "").toLowerCase().includes(s) || (u.role || "").toLowerCase().includes(s)
+    return users.filter(
+      (u) =>
+        (u.email || "").toLowerCase().includes(s) ||
+        (u.role || "").toLowerCase().includes(s)
     );
   }, [users, q]);
 
-  const onCreate = async (e: React.FormEvent) => {
+  async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateMsg("");
-    setCreating(true);
+    if (!canWrite) return;
+
     try {
-      await api.post("/users", { email: email.trim(), password: pass, role });
+      setCreating(true);
+      await api.post("/users", {
+        email: email.trim(),
+        password: pass,
+        role,
+      });
       setCreateMsg("✅ Usuario creado");
-      setEmail(""); setPass("");
+      setEmail("");
+      setPass("");
       await load();
     } catch (e: any) {
-      setCreateMsg(`❌ ${e?.response?.data?.message || e?.message || "No se pudo crear"}`);
+      setCreateMsg(
+        `❌ ${e?.response?.data?.message || e?.message || "No se pudo crear"}`
+      );
     } finally {
       setCreating(false);
     }
-  };
+  }
 
-  const onChangeRole = async (id: string, newRole: Role) => {
+  async function onChangeRole(id: string, newRole: Role) {
     try {
-      await api.patch(`/users/${id}`, { role: newRole });
+      await api.patch(`/users/${id}/role`, { role: newRole }); // ✅ endpoint correcto
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "No se pudo cambiar el rol");
+      alert(
+        e?.response?.data?.message ||
+          e?.message ||
+          "No se pudo cambiar el rol"
+      );
     }
-  };
+  }
 
-  const onResetPassword = async (id: string) => {
+  async function onResetPassword(id: string) {
     const newPass = prompt("Nueva contraseña temporal:");
     if (!newPass) return;
     try {
       await api.post(`/users/${id}/reset-password`, { password: newPass });
       alert("Contraseña actualizada");
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "No se pudo cambiar la contraseña");
+      const msg =
+        e?.response?.status === 404
+          ? "La API no tiene habilitado el endpoint de reset de contraseña."
+          : e?.response?.data?.message || e?.message || "No se pudo cambiar la contraseña";
+      alert(msg);
     }
-  };
-
-  const canWrite = assignableRoles.length > 0; // OWNER o SUPERADMIN
+  }
 
   return (
     <AppLayout title="Usuarios" subtitle="Gestión de cuentas y roles">
@@ -104,15 +127,17 @@ export default function AdminUsers() {
           <div className="card-body">
             <h2 className="card-title">Crear usuario</h2>
 
-            {!canWrite ? (
+            {!canWrite && (
               <div className="alert">
-                <span>Solo lectura. Contacta a un OWNER para crear o editar usuarios.</span>
+                <span>Solo lectura. Contacta a un OWNER o ADMIN para crear o editar usuarios.</span>
               </div>
-            ) : null}
+            )}
 
             <form onSubmit={onCreate} className="grid gap-3">
               <div className="form-control">
-                <label className="label"><span className="label-text">Email</span></label>
+                <label className="label">
+                  <span className="label-text">Email</span>
+                </label>
                 <input
                   className="input input-bordered"
                   type="email"
@@ -123,8 +148,11 @@ export default function AdminUsers() {
                   placeholder="usuario@tu-negocio.com"
                 />
               </div>
+
               <div className="form-control">
-                <label className="label"><span className="label-text">Contraseña</span></label>
+                <label className="label">
+                  <span className="label-text">Contraseña</span>
+                </label>
                 <input
                   className="input input-bordered"
                   type="password"
@@ -135,24 +163,38 @@ export default function AdminUsers() {
                   placeholder="Contraseña temporal"
                 />
               </div>
+
               <div className="form-control">
-                <label className="label"><span className="label-text">Rol</span></label>
+                <label className="label">
+                  <span className="label-text">Rol</span>
+                </label>
                 <select
                   className="select select-bordered"
                   value={role}
                   disabled={!canWrite}
                   onChange={(e) => setRole(e.target.value as Role)}
                 >
-                  {assignableRoles.map(r => (
-                    <option key={r} value={r}>{r}</option>
+                  {assignableRoles.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
                   ))}
                 </select>
               </div>
-              <button className={`btn btn-primary ${creating ? "loading" : ""}`} disabled={!canWrite || creating}>
+
+              <button
+                className={`btn btn-primary ${creating ? "loading" : ""}`}
+                disabled={!canWrite || creating}
+              >
                 {creating ? "Creando…" : "Crear usuario"}
               </button>
+
               {!!createMsg && (
-                <div className={`alert ${createMsg.startsWith("✅") ? "alert-success" : "alert-warning"}`}>
+                <div
+                  className={`alert ${
+                    createMsg.startsWith("✅") ? "alert-success" : "alert-warning"
+                  }`}
+                >
                   <span>{createMsg}</span>
                 </div>
               )}
@@ -165,11 +207,15 @@ export default function AdminUsers() {
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h2 className="card-title">Usuarios</h2>
-              <Link to="/app/admin" className="btn btn-ghost btn-sm">Volver al Panel</Link>
+              <Link to="/app/admin" className="btn btn-ghost btn-sm">
+                Volver al Panel
+              </Link>
             </div>
 
             <div className="form-control">
-              <label className="label"><span className="label-text">Buscar</span></label>
+              <label className="label">
+                <span className="label-text">Buscar</span>
+              </label>
               <input
                 className="input input-bordered"
                 placeholder="Email o rol…"
@@ -179,9 +225,13 @@ export default function AdminUsers() {
             </div>
 
             {loading ? (
-              <div className="flex items-center gap-2 mt-3"><span className="loading loading-spinner" /> Cargando…</div>
+              <div className="flex items-center gap-2 mt-3">
+                <span className="loading loading-spinner" /> Cargando…
+              </div>
             ) : err ? (
-              <div className="alert alert-warning mt-3"><span>{err}</span></div>
+              <div className="alert alert-warning mt-3">
+                <span>{err}</span>
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-box border border-base-300 mt-3">
                 <table className="table table-compact w-full">
@@ -193,38 +243,69 @@ export default function AdminUsers() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(u => (
-                      <tr key={u.id}>
-                        <td>{u.email}</td>
-                        <td>
-                          <select
-                            className="select select-bordered select-xs"
-                            value={u.role}
-                            disabled={!canWrite}
-                            onChange={(e) => onChangeRole(u.id, e.target.value as Role)}
-                          >
-                            {/* Limitar opciones al rol del llamante */}
-                            {assignableRoles.includes(u.role) || assignableRoles.length
-                              ? assignableRoles.map(r => <option key={r} value={r}>{r}</option>)
-                              : <option value={u.role}>{u.role}</option>}
-                          </select>
-                        </td>
-                        <td>
-                          <div className="join join-vertical sm:join-horizontal">
-                            <button
-                              className="btn btn-xs btn-outline join-item"
-                              disabled={!canWrite}
-                              onClick={() => onResetPassword(u.id)}
-                              title="Resetear contraseña"
+                    {filtered.map((u) => {
+                      // Puede editar esta fila si tiene permiso para escribir Y
+                      // - es SUPERADMIN (siempre), o
+                      // - el rol actual del usuario está dentro de los asignables del creador
+                      const canEditRow =
+                        canWrite &&
+                        (myRole === "SUPERADMIN" || assignableRoles.includes(u.role));
+
+                      const options: { value: Role; label: string; disabled?: boolean }[] =
+                        canEditRow
+                          ? [
+                              ...assignableRoles.map((r) => ({ value: r, label: r })),
+                              // si el rol actual no está en los asignables, muéstralo bloqueado
+                              ...(assignableRoles.includes(u.role)
+                                ? []
+                                : [{ value: u.role, label: u.role, disabled: true }]),
+                            ]
+                          : [{ value: u.role, label: u.role, disabled: true }];
+
+                      return (
+                        <tr key={u.id}>
+                          <td>{u.email}</td>
+                          <td>
+                            <select
+                              className="select select-bordered select-xs"
+                              value={u.role}
+                              disabled={!canEditRow}
+                              onChange={(e) =>
+                                onChangeRole(u.id, e.target.value as Role)
+                              }
                             >
-                              Reset pass
-                            </button>
-                          </div>
+                              {options.map((op) => (
+                                <option
+                                  key={op.value}
+                                  value={op.value}
+                                  disabled={op.disabled}
+                                >
+                                  {op.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <div className="join join-vertical sm:join-horizontal">
+                              <button
+                                className="btn btn-xs btn-outline join-item"
+                                disabled={!canEditRow}
+                                onClick={() => onResetPassword(u.id)}
+                                title="Resetear contraseña"
+                              >
+                                Reset pass
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!filtered.length && (
+                      <tr>
+                        <td colSpan={3} className="text-sm opacity-70 p-4">
+                          Sin resultados
                         </td>
                       </tr>
-                    ))}
-                    {!filtered.length && (
-                      <tr><td colSpan={3} className="text-sm opacity-70 p-4">Sin resultados</td></tr>
                     )}
                   </tbody>
                 </table>
