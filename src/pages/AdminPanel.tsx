@@ -130,7 +130,17 @@ export default function AdminPanel() {
           <div className="text-sm space-y-1">
             <div>
               <span className="opacity-70">Emisor:</span>{" "}
-              {wa?.from ? <a className="link" href={`https://${wa.from.replace(/^whatsapp:/, "")}`} onClick={(e)=>e.preventDefault()}>{wa.from}</a> : "—"}
+              {wa?.from ? (
+                <a
+                  className="link"
+                  href={`https://${wa.from.replace(/^whatsapp:/, "")}`}
+                  onClick={(e) => e.preventDefault()}
+                >
+                  {wa.from}
+                </a>
+              ) : (
+                "—"
+              )}
             </div>
             <div>
               <span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}
@@ -142,7 +152,6 @@ export default function AdminPanel() {
               <span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}
             </div>
           </div>
-          {/* Nota sobre variables eliminada según solicitud */}
         </div>
       </div>
     );
@@ -196,6 +205,21 @@ export default function AdminPanel() {
           </div>
         </div>
 
+        {/* CREAR CLIENTE (tarjeta separada) */}
+        <div className="card bg-base-100 shadow-sm">
+          <div className="card-body">
+            <h2 className="card-title">Crear cliente</h2>
+            <p className="text-sm opacity-70">
+              Registra un cliente nuevo y envíale su QR de fidelización.
+            </p>
+            <div className="card-actions">
+              <Link to="/app/customers/new" className="btn btn-outline">
+                Crear cliente
+              </Link>
+            </div>
+          </div>
+        </div>
+
         {/* WHATSAPP STATUS (sin texto de variables) */}
         <WaCard />
 
@@ -242,10 +266,7 @@ export default function AdminPanel() {
                   </thead>
                   <tbody>
                     {filtered.map((c, idx) => (
-                      <tr
-                        key={c.id}
-                        className={idx % 2 === 0 ? "bg-base-100" : "bg-base-200/40"}
-                      >
+                      <tr key={c.id} className={idx % 2 === 0 ? "bg-base-100" : "bg-base-200/40"}>
                         <td className="align-top">
                           <div className="font-medium">{c.name}</div>
                           <div className="sm:hidden text-xs opacity-70">{c.phone || "—"}</div>
@@ -255,10 +276,7 @@ export default function AdminPanel() {
                         <td className="align-top hidden sm:table-cell">{c.email || "—"}</td>
                         <td className="align-top text-center">
                           <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                            <Link
-                              to={`/app/customers/${c.id}`}
-                              className="btn btn-info btn-sm w-28"
-                            >
+                            <Link to={`/app/customers/${c.id}`} className="btn btn-info btn-sm w-28">
                               Detalle
                             </Link>
                             <button
@@ -309,4 +327,3 @@ export default function AdminPanel() {
     </AppLayout>
   );
 }
-
