@@ -1,437 +1,355 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Loader2, RefreshCw, ShieldCheck, ShieldAlert, Download, Building2, DollarSign, ChartLine } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+// partner-web/src/pages/CPanelAdminDashboard.tsx
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "@/shared/api";
+import { useSession } from "@/shared/auth";
 
-// --- Helpers ---------------------------------------------------------------
-const thisPeriod = () => {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-};
-
-function normBearer(tokenRaw: string) {
-  const t = (tokenRaw || "").trim();
-  if (!t) return "";
-  return t.toLowerCase().startsWith("bearer ") ? t : `Bearer ${t}`;
-}
-
-async function fetchJson(apiBase: string, path: string, token: string, init?: RequestInit) {
-  const res = await fetch(`${apiBase}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      Authorization: normBearer(token),
-    },
-  });
-  const ct = res.headers.get("content-type") || "";
-  if (!res.ok) {
-    const err = ct.includes("json") ? await res.json() : { message: await res.text() };
-    throw new Error(`HTTP ${res.status}: ${err.message || "error"}`);
-  }
-  return ct.includes("json") ? res.json() : res.text();
-}
-
-// --- Types (partial) -------------------------------------------------------
-interface BusinessRow {
+type Biz = {
   id: string;
   name: string;
-  status: "trial" | "active" | "suspended" | "cancelled";
-}
+};
 
-interface MessagingSummary {
-  range: { from: string; to: string };
-  totals: {
-    byStatus: Record<string, number>;
-    byChannel: Record<string, number>;
-    all: number;
-  };
-  series: { byDay: { day: string; count: number }[] };
-  today: number;
-  monthToDate: number;
-}
+type BillingKind = "LEASE" | "MSG_MARKETING" | "MSG_UTILITY";
+type BillingStatus = "DRAFT" | "FINALIZED";
 
-interface TemplateRow { templateId: string; sent: number; delivered: number; failed: number; lastSentAt?: string; deliveryRate?: number }
-interface ProviderRow { providerId: string; sent: number; delivered: number; failed: number; lastSentAt?: string; deliveryRate?: number; topErrorClass?: string; topErrorCount?: number; sampleError?: string }
-
-interface BillingItem {
-  id: string;
+type BillingItem = {
+  id?: string;
   businessId: string;
   period: string;
-  kind: "LEASE" | "MSG_MARKETING" | "MSG_UTILITY";
-  status: "DRAFT" | "FINALIZED";
+  kind: BillingKind;
+  status: BillingStatus;
   quantity: number;
   unitAmountCents: number;
   totalAmountCents: number;
-  meta?: any;
+  meta?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type PreviewResp = {
+  ok: true;
+  business: { id: string; name: string };
+  period: string;
+  range: { from: string; to: string };
+  items: BillingItem[];
+  subtotalCents: number;
+};
+
+type FeedResp = {
+  ok: true;
+  period: string;
+  items: BillingItem[];
+  totalFinalized: number;
+};
+
+function fmtMoneyCents(n: number) {
+  const v = (n ?? 0) / 100;
+  return v.toLocaleString(undefined, { style: "currency", currency: "EUR" });
 }
 
-// --- Component -------------------------------------------------------------
-export default function CpanelDashboard() {
-  const [apiBase, setApiBase] = useState<string>("/api");
-  const [tokenRaw, setTokenRaw] = useState<string>("");
-  const token = useMemo(() => normBearer(tokenRaw), [tokenRaw]);
+function thisMonthUTC(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth() + 1;
+  return `${y}-${m < 10 ? "0" + m : m}`;
+}
 
-  const [health, setHealth] = useState<{ ok: boolean; ts?: string } | null>(null);
+export default function CPanelAdminDashboard() {
+  const nav = useNavigate();
+  const { role } = useSession();
+
+  // Seguridad extra (el ProtectedRoute ya lo filtra)
+  useEffect(() => {
+    if (role !== "SUPERADMIN") {
+      nav("/unauthorized", { replace: true });
+    }
+  }, [role, nav]);
+
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [err, setErr] = useState<string>("");
+  const [okMsg, setOkMsg] = useState<string>("");
 
-  const [businesses, setBusinesses] = useState<BusinessRow[]>([]);
-  const [bizId, setBizId] = useState<string>("");
-  const [period, setPeriod] = useState<string>(thisPeriod());
+  const [health, setHealth] = useState<string>("checking…");
 
-  // Messaging
-  const [summary, setSummary] = useState<MessagingSummary | null>(null);
-  const [byTemplate, setByTemplate] = useState<TemplateRow[]>([]);
-  const [byCampaign, setByCampaign] = useState<any[]>([]);
-  const [byProvider, setByProvider] = useState<ProviderRow[]>([]);
+  const [bizList, setBizList] = useState<Biz[]>([]);
+  const [businessId, setBusinessId] = useState<string>("");
+  const [period, setPeriod] = useState<string>(thisMonthUTC());
 
-  // Billing
-  const [preview, setPreview] = useState<any | null>(null);
-  const [feed, setFeed] = useState<{ ok: boolean; period: string; items: BillingItem[]; totalFinalized: number } | null>(null);
+  const [preview, setPreview] = useState<PreviewResp | null>(null);
+  const [feed, setFeed] = useState<FeedResp | null>(null);
 
-  const canQuery = !!(apiBase && token);
+  // Carga inicial: health + businesses
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const h = await api.get("/cp/health");
+        if (!alive) return;
+        setHealth(h?.data?.ok ? "OK" : "NO OK");
+      } catch {
+        if (alive) setHealth("DOWN");
+      }
 
-  const loadBase = async () => {
-    setError("");
+      try {
+        // Listado de negocios CPANEL
+        // Endpoint esperado del backend: GET /cp/admin/businesses  → { ok, rows: Biz[] }
+        const resp = await api.get("/cp/admin/businesses");
+        const rows: Biz[] = resp?.data?.rows ?? [];
+        if (!alive) return;
+        setBizList(rows);
+        if (rows.length && !businessId) setBusinessId(rows[0].id);
+      } catch (e: any) {
+        if (!alive) return;
+        setErr(e?.response?.data?.message || "No se pudo cargar el listado de negocios.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []); // solo una vez
+
+  const selectedBiz = useMemo(
+    () => bizList.find((b) => b.id === businessId) || null,
+    [bizList, businessId]
+  );
+
+  async function doPreview() {
+    if (!businessId || !period) return;
+    setErr("");
+    setOkMsg("");
     setLoading(true);
+    setFeed(null);
     try {
-      const [svc, cp, biz] = await Promise.all([
-        fetchJson(apiBase, "/health", token).catch(() => ({ ok: false })),
-        fetchJson(apiBase, "/cp/health", token),
-        fetchJson(apiBase, "/cp/businesses", token).then((r) => r.rows as BusinessRow[]),
-      ]);
-      setHealth({ ok: cp?.ok, ts: cp?.ts });
-      setBusinesses(biz);
-      if (!bizId && biz?.length) setBizId(biz[0].id);
+      const r = await api.get<PreviewResp>("/cp/billing/preview", {
+        params: { businessId, period },
+      });
+      setPreview(r.data);
     } catch (e: any) {
-      setError(e.message || String(e));
+      setPreview(null);
+      setErr(e?.response?.data?.message || e?.message || "Error en preview.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const refreshMessaging = async () => {
-    if (!bizId) return;
-    setError("");
+  async function doFinalize() {
+    if (!businessId || !period) return;
+    setErr("");
+    setOkMsg("");
     setLoading(true);
     try {
-      const [sum, tmpl, camp, prov] = await Promise.all([
-        fetchJson(apiBase, `/cp/messaging/summary?businessId=${bizId}`, token),
-        fetchJson(apiBase, `/cp/messaging/by-template?businessId=${bizId}&page=1&pageSize=20`, token),
-        fetchJson(apiBase, `/cp/messaging/by-campaign?businessId=${bizId}&page=1&pageSize=20`, token),
-        fetchJson(apiBase, `/cp/messaging/by-provider?businessId=${bizId}&page=1&pageSize=20`, token),
-      ]);
-      setSummary(sum);
-      setByTemplate(tmpl.rows || []);
-      setByCampaign(camp.rows || []);
-      setByProvider(prov.rows || []);
+      await api.post("/cp/billing/finalize", { businessId, period });
+      const r = await api.get<FeedResp>("/cp/billing/feed", {
+        params: { businessId, period },
+      });
+      setFeed(r.data);
+      setOkMsg("Periodo finalizado correctamente.");
     } catch (e: any) {
-      setError(e.message || String(e));
+      setFeed(null);
+      setErr(e?.response?.data?.message || e?.message || "Error al finalizar.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const doPreview = async () => {
-    if (!bizId) return;
-    setError("");
-    setLoading(true);
-    try {
-      const p = await fetchJson(apiBase, `/cp/billing/preview?businessId=${bizId}&period=${encodeURIComponent(period)}`, token);
-      setPreview(p);
-    } catch (e: any) {
-      setError(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  function onChangeBiz(e: React.ChangeEvent<HTMLSelectElement>) {
+    setBusinessId(e.target.value);
+  }
 
-  const doFinalize = async () => {
-    if (!bizId) return;
-    setError("");
-    setLoading(true);
-    try {
-      const body = { businessId: bizId, period };
-      const f = await fetchJson(apiBase, "/cp/billing/finalize", token, { method: "POST", body: JSON.stringify(body) });
-      setFeed(f);
-    } catch (e: any) {
-      setError(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  function onChangePeriod(e: React.ChangeEvent<HTMLInputElement>) {
+    // Input type="month" devuelve YYYY-MM
+    setPeriod(e.target.value);
+  }
 
-  const loadFeed = async () => {
-    if (!bizId) return;
-    setError("");
-    setLoading(true);
-    try {
-      const f = await fetchJson(apiBase, `/cp/billing/feed?businessId=${bizId}&period=${encodeURIComponent(period)}`, token);
-      setFeed(f);
-    } catch (e: any) {
-      setError(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const csvLink = (path: string) => `${apiBase}${path}${path.includes("?") ? "&" : "?"}businessId=${bizId}`;
+  const subtotalPreview = useMemo(
+    () => (preview?.items ?? []).reduce((s, it) => s + (it.totalAmountCents ?? 0), 0),
+    [preview]
+  );
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2"><ShieldCheck className="w-5 h-5"/> CPanel API — Conexión</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <Label>API Base</Label>
-                <Input placeholder="https://api.tu-dominio" value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Token (pega el JWT o con "Bearer …")</Label>
-                <Input type="password" placeholder="Bearer eyJ…" value={tokenRaw} onChange={(e) => setTokenRaw(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button disabled={!canQuery || loading} onClick={loadBase}><RefreshCw className="w-4 h-4 mr-2"/>Conectar</Button>
-              {health?.ok ? (
-                <Badge variant="secondary" className="flex items-center gap-1"><ShieldCheck className="w-4 h-4"/> ok {health.ts ? new Date(health.ts).toLocaleString() : ""}</Badge>
-              ) : (
-                <Badge variant="destructive" className="flex items-center gap-1"><ShieldAlert className="w-4 h-4"/> sin conexión</Badge>
-              )}
-              {loading && <Loader2 className="w-4 h-4 animate-spin"/>}
-              {error && <span className="text-sm text-red-600">{error}</span>}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>Contexto</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label>Negocio</Label>
-              <Select value={bizId} onValueChange={setBizId}>
-                <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
-                <SelectContent>
-                  {businesses.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.name} — {b.status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Periodo (YYYY-MM)</Label>
-              <Input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2025-09" />
-            </div>
-          </CardContent>
-        </Card>
+    <div className="max-w-6xl mx-auto p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">CPanel · Billing</h1>
+        <span
+          className={`badge ${health === "OK" ? "badge-success" : "badge-error"}`}
+          title="Estado /cp/health"
+        >
+          Health: {health}
+        </span>
       </div>
 
-      <Tabs defaultValue="messaging" className="w-full">
-        <TabsList>
-          <TabsTrigger value="messaging"><ChartLine className="w-4 h-4 mr-2"/>Mensajería</TabsTrigger>
-          <TabsTrigger value="billing"><DollarSign className="w-4 h-4 mr-2"/>Billing</TabsTrigger>
-        </TabsList>
+      {err && (
+        <div className="alert alert-warning">
+          <span>{err}</span>
+        </div>
+      )}
+      {okMsg && (
+        <div className="alert alert-success">
+          <span>{okMsg}</span>
+        </div>
+      )}
 
-        {/* MESSAGING */}
-        <TabsContent value="messaging" className="space-y-4">
-          <div className="flex gap-2">
-            <Button variant="secondary" disabled={!bizId || loading} onClick={refreshMessaging}><RefreshCw className="w-4 h-4 mr-2"/>Refrescar</Button>
-            <a className="inline-flex items-center text-sm underline" href={csvLink(`/cp/messaging/by-template.csv?period=${period}`)} target="_blank" rel="noreferrer"><Download className="w-4 h-4 mr-1"/>CSV por Template</a>
-            <a className="inline-flex items-center text-sm underline" href={csvLink(`/cp/messaging/by-campaign.csv?period=${period}`)} target="_blank" rel="noreferrer"><Download className="w-4 h-4 mr-1"/>CSV por Campaña</a>
-            <a className="inline-flex items-center text-sm underline" href={csvLink(`/cp/messaging/by-provider.csv?period=${period}`)} target="_blank" rel="noreferrer"><Download className="w-4 h-4 mr-1"/>CSV por Proveedor</a>
+      {/* Filtros */}
+      <div className="card bg-base-100 shadow-sm">
+        <div className="card-body grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="label">
+              <span className="label-text">Negocio</span>
+            </label>
+            <select
+              value={businessId}
+              onChange={onChangeBiz}
+              className="select select-bordered w-full"
+            >
+              {bizList.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} · {b.id}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {summary && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5"/>{businesses.find(b=>b.id===bizId)?.name || bizId} — Resumen</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Stat label="Total" value={summary.totals.all} />
-                  <Stat label="Sent" value={summary.totals.byStatus?.SENT || 0} />
-                  <Stat label="Delivered" value={summary.totals.byStatus?.DELIVERED || 0} />
-                  <Stat label="Failed" value={summary.totals.byStatus?.FAILED || 0} />
-                </div>
-                <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={summary.series.byDay} margin={{ left: 8, right: 8, top: 5, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="count" dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader><CardTitle>Top por Template</CardTitle></CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Template</TableHead>
-                      <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Delivered</TableHead>
-                      <TableHead className="text-right">Failed</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byTemplate.map((r) => (
-                      <TableRow key={r.templateId}>
-                        <TableCell className="font-medium">{r.templateId}</TableCell>
-                        <TableCell className="text-right">{r.sent}</TableCell>
-                        <TableCell className="text-right">{r.delivered}</TableCell>
-                        <TableCell className="text-right">{r.failed}</TableCell>
-                      </TableRow>
-                    ))}
-                    {!byTemplate.length && (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Sin datos</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Top por Proveedor</CardTitle></CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Proveedor</TableHead>
-                      <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Delivered</TableHead>
-                      <TableHead className="text-right">Failed</TableHead>
-                      <TableHead>Top Error</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byProvider.map((r) => (
-                      <TableRow key={r.providerId}>
-                        <TableCell className="font-medium">{r.providerId}</TableCell>
-                        <TableCell className="text-right">{r.sent}</TableCell>
-                        <TableCell className="text-right">{r.delivered}</TableCell>
-                        <TableCell className="text-right">{r.failed}</TableCell>
-                        <TableCell>{r.topErrorClass ? `${r.topErrorClass} (${r.topErrorCount})` : "-"}</TableCell>
-                      </TableRow>
-                    ))}
-                    {!byProvider.length && (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Sin datos</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* BILLING */}
-        <TabsContent value="billing" className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="secondary" disabled={!bizId || loading} onClick={doPreview}><RefreshCw className="w-4 h-4 mr-2"/>Preview</Button>
-            <Button disabled={!bizId || loading} onClick={doFinalize}><DollarSign className="w-4 h-4 mr-2"/>Finalize</Button>
-            <Button variant="outline" disabled={!bizId || loading} onClick={loadFeed}><RefreshCw className="w-4 h-4 mr-2"/>Feed</Button>
+          <div>
+            <label className="label">
+              <span className="label-text">Periodo (YYYY-MM)</span>
+            </label>
+            <input
+              type="month"
+              value={period}
+              onChange={onChangePeriod}
+              className="input input-bordered w-full"
+            />
           </div>
 
-          {preview && (
-            <Card>
-              <CardHeader><CardTitle>Preview — {preview.period}</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <div className="text-sm text-muted-foreground">{preview.business?.name} | {new Date(preview.range.from).toLocaleDateString()} → {new Date(preview.range.to).toLocaleDateString()}</div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Kind</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Unit (¢)</TableHead>
-                      <TableHead className="text-right">Total (¢)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {preview.items?.map((it: BillingItem) => (
-                      <TableRow key={it.kind}>
-                        <TableCell className="font-medium">{it.kind}</TableCell>
-                        <TableCell className="text-right">{it.quantity}</TableCell>
-                        <TableCell className="text-right">{it.unitAmountCents}</TableCell>
-                        <TableCell className="text-right">{it.totalAmountCents}</TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-right font-medium">Subtotal</TableCell>
-                      <TableCell className="text-right font-semibold">{preview.subtotalCents}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
+          <div className="flex items-end gap-2">
+            <button
+              className={`btn btn-primary ${loading ? "loading" : ""}`}
+              onClick={doPreview}
+              disabled={loading || !businessId || !period}
+            >
+              {loading ? "" : "Preview"}
+            </button>
+            <button
+              className={`btn btn-outline ${loading ? "loading" : ""}`}
+              onClick={doFinalize}
+              disabled={loading || !businessId || !period}
+              title="Persiste y marca como FINALIZED"
+            >
+              {loading ? "" : "Finalize"}
+            </button>
+          </div>
+        </div>
+      </div>
 
-          {feed && (
-            <Card>
-              <CardHeader><CardTitle>Feed — {feed.period}</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <div className="text-sm text-muted-foreground">Total FINALIZED: <span className="font-semibold">{(feed.totalFinalized/100).toFixed(2)} $</span> ({feed.totalFinalized} ¢)</div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Kind</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Unit (¢)</TableHead>
-                      <TableHead className="text-right">Total (¢)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {feed.items?.map((it: BillingItem) => (
-                      <TableRow key={it.id}>
-                        <TableCell className="font-medium">{it.kind}</TableCell>
-                        <TableCell>
-                          <Badge variant={it.status === "FINALIZED" ? "default" : "secondary"}>{it.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{it.quantity}</TableCell>
-                        <TableCell className="text-right">{it.unitAmountCents}</TableCell>
-                        <TableCell className="text-right">{it.totalAmountCents}</TableCell>
-                      </TableRow>
-                    ))}
-                    {!feed.items?.length && (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Sin ítems</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+      {/* Preview */}
+      {preview && (
+        <div className="card bg-base-100 shadow-sm">
+          <div className="card-body">
+            <div className="flex items-center justify-between">
+              <h2 className="card-title">Preview — {selectedBiz?.name}</h2>
+              <div className="text-sm opacity-70">Periodo: {preview.period}</div>
+            </div>
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border p-4">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold">{value ?? 0}</div>
+            <div className="overflow-x-auto">
+              <table className="table table-compact">
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th className="text-right">Qty</th>
+                    <th className="text-right">Unit</th>
+                    <th className="text-right">Total</th>
+                    <th>Meta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.items.map((it, idx) => (
+                    <tr key={idx}>
+                      <td>{it.kind}</td>
+                      <td className="text-right">{it.quantity}</td>
+                      <td className="text-right">{fmtMoneyCents(it.unitAmountCents)}</td>
+                      <td className="text-right font-medium">
+                        {fmtMoneyCents(it.totalAmountCents)}
+                      </td>
+                      <td className="text-xs opacity-70">
+                        {it.meta ? JSON.stringify(it.meta) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th colSpan={3} className="text-right">
+                      Subtotal
+                    </th>
+                    <th className="text-right">{fmtMoneyCents(subtotalPreview)}</th>
+                    <th />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feed (tras finalize) */}
+      {feed && (
+        <div className="card bg-base-100 shadow-sm">
+          <div className="card-body">
+            <div className="flex items-center justify-between">
+              <h2 className="card-title">Finalizado — {selectedBiz?.name}</h2>
+              <div className="text-sm opacity-70">Periodo: {feed.period}</div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="table table-compact">
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Status</th>
+                    <th className="text-right">Qty</th>
+                    <th className="text-right">Unit</th>
+                    <th className="text-right">Total</th>
+                    <th>Meta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feed.items.map((it) => (
+                    <tr key={`${it.kind}-${it.period}`}>
+                      <td>{it.kind}</td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            it.status === "FINALIZED" ? "badge-success" : "badge-ghost"
+                          }`}
+                        >
+                          {it.status}
+                        </span>
+                      </td>
+                      <td className="text-right">{it.quantity}</td>
+                      <td className="text-right">{fmtMoneyCents(it.unitAmountCents)}</td>
+                      <td className="text-right font-medium">
+                        {fmtMoneyCents(it.totalAmountCents)}
+                      </td>
+                      <td className="text-xs opacity-70">
+                        {it.meta ? JSON.stringify(it.meta) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th colSpan={4} className="text-right">
+                      Total FINALIZED
+                    </th>
+                    <th className="text-right">{fmtMoneyCents(feed.totalFinalized)}</th>
+                    <th />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
