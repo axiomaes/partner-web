@@ -1,7 +1,8 @@
 // partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
-import { getToken } from "./auth";
-import type { UserRole } from "./auth";
+
+/** ===== Tipos compartidos ===== */
+export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
 
 /** ================= Base URL ================== */
 const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
@@ -19,7 +20,7 @@ function computeBaseURL(): string {
 
 export const baseURL = computeBaseURL();
 
-/** ============= Helpers de auth ============= */
+/** ============= Helpers de auth (solo storage) ============= */
 const PANEL_STORAGE_KEY = "axioma.session";
 const PORTAL_KEY = "axioma_portal";
 
@@ -58,14 +59,10 @@ export const api: AxiosInstance = axios.create({
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Adjunta siempre Authorization: Bearer <token>
-// - 1º intenta con getToken() (si lo expone auth.ts)
-// - 2º fallback a localStorage 'axioma.session'
+// Adjunta siempre Authorization desde localStorage 'axioma.session'
 api.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
-  const t1 = typeof getToken === "function" ? getToken() : null;
-  const t2 = getTokenFromStorage();
-  const token = (t1 && t1.trim()) ? t1 : (t2 && t2.trim()) ? t2 : null;
+  const token = getTokenFromStorage();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   config.headers = headers;
   return config;
