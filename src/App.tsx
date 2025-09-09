@@ -8,11 +8,14 @@ import CustomerOTP from "./pages/CustomerOTP";
 import LoginStaff from "./pages/LoginStaff";
 import Unauthorized from "./pages/Unauthorized";
 
-// Panel (protegido)
+// Panel (protegido negocio)
 import Dashboard from "./pages/Dashboard";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 import StaffNew from "./pages/StaffNew";
+
+// CPanel (superadmin)
+import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -43,8 +46,10 @@ export default function App(): JSX.Element {
             <NavLink to="/" className={navClass}>Inicio</NavLink>
             <NavLink to="/customer-auth" className={navClass}>Acceso clientes</NavLink>
             <NavLink to="/login" className={navClass}>Staff</NavLink>
-            {/* 👇 El panel vive bajo /app */}
+            {/* Panel de negocio */}
             <NavLink to="/app" className={navClass}>Panel</NavLink>
+            {/* CPanel (solo SUPERADMIN; el enlace puede mostrarse, el guard controla el acceso) */}
+            <NavLink to="/cpanel" className={navClass}>CPanel</NavLink>
           </nav>
 
           {/* Botón menú móvil */}
@@ -66,8 +71,9 @@ export default function App(): JSX.Element {
               <NavLink to="/" className={navClass} onClick={() => setOpen(false)}>Inicio</NavLink>
               <NavLink to="/customer-auth" className={navClass} onClick={() => setOpen(false)}>Acceso clientes</NavLink>
               <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>Staff</NavLink>
-              {/* 👇 coherente con el desktop */}
               <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>Panel</NavLink>
+              {/* CPanel en móvil */}
+              <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>CPanel</NavLink>
             </div>
           </div>
         )}
@@ -121,6 +127,16 @@ export default function App(): JSX.Element {
             element={
               <ProtectedRoute roles={["ADMIN"]}>
                 <StaffNew />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* CPanel (SUPERADMIN) */}
+          <Route
+            path="/cpanel"
+            element={
+              <ProtectedRoute roles={["SUPERADMIN"]}>
+                <CPanelAdminDashboard />
               </ProtectedRoute>
             }
           />
