@@ -12,6 +12,7 @@ export default function Home() {
   // useSession ahora devuelve campos planos: { id, name, email, role, token, ready }
   const s = useSession();
   const isAuth = !!s.token;
+  const isSuperadmin = s.role === "SUPERADMIN";
   const userEmail = s.email;
 
   useEffect(() => setOpen(false), [pathname]);
@@ -39,9 +40,12 @@ export default function Home() {
 
           <p className="menu-title">Accesos</p>
           <ul className="menu rounded-box">
+            {/* OJO: si tu ruta pública real es /customer-auth, cambia /portal por /customer-auth */}
             <li><Link to="/portal" className="justify-start">Acceso Clientes</Link></li>
             <li><Link to="/app" className="justify-start">Acceso Staff</Link></li>
-            <li><Link to="/app/admin" className="justify-start">Administrador</Link></li>
+            {isSuperadmin && (
+              <li><Link to="/cpanel" className="justify-start">Administrador</Link></li>
+            )}
           </ul>
 
           <p className="menu-title mt-4">Información</p>
@@ -76,7 +80,7 @@ export default function Home() {
       {/* Drawer móvil profesional */}
       {open && (
         <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true">
-          {/* overlay más oscuro y con blur para legibilidad */}
+          {/* overlay */}
           <div
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
@@ -116,14 +120,16 @@ export default function Home() {
                   Acceso Staff
                 </button>
               </li>
-              <li>
-                <button
-                  className="justify-start text-base-content"
-                  onClick={() => go("/app/admin")}
-                >
-                  Administrador
-                </button>
-              </li>
+              {isSuperadmin && (
+                <li>
+                  <button
+                    className="justify-start text-base-content"
+                    onClick={() => go("/cpanel")}
+                  >
+                    Administrador
+                  </button>
+                </li>
+              )}
             </ul>
 
             <p className="menu-title">Información</p>
@@ -190,13 +196,19 @@ export default function Home() {
                   >
                     Acceso Clientes
                   </button>
-                  <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
+                  <div
+                    className={`grid ${
+                      isSuperadmin ? "grid-cols-2 sm:grid-cols-1" : "grid-cols-1"
+                    } gap-3`}
+                  >
                     <Link to="/app" className="btn btn-outline h-20">
                       Staff
                     </Link>
-                    <Link to="/app/admin" className="btn btn-outline h-20">
-                      Administrador
-                    </Link>
+                    {isSuperadmin && (
+                      <Link to="/cpanel" className="btn btn-outline h-20">
+                        Administrador
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>
