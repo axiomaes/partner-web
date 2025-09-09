@@ -21,6 +21,9 @@ import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ProtectedCpanelRoute from "./components/ProtectedCpanelRoute";
 
+// 🔧 Limpia SW/cachés en cliente
+import DisablePWA from "./components/DisablePWA";
+
 import { useSession } from "@/shared/auth";
 
 export default function App(): JSX.Element {
@@ -35,6 +38,9 @@ export default function App(): JSX.Element {
 
   return (
     <div className="min-h-dvh flex flex-col bg-brand-cream">
+      {/* Mata SW/caches en clientes que aún lo tengan */}
+      <DisablePWA />
+
       {/* HEADER */}
       <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primary-dark text-white shadow">
         <div className="container-app h-14 flex items-center justify-between gap-3">
