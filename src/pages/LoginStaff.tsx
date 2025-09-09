@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { baseURL, type UserRole } from "@/shared/api";
-import { saveSession, clearSession } from "@/shared/auth";
+import { saveSession, clearSession, type Session } from "@/shared/auth";
 
 function decodeJwtRole(token: string): UserRole | null {
   try {
@@ -44,12 +44,18 @@ export default function LoginStaff() {
       const token: string | undefined = data?.access_token || data?.accessToken;
       if (!token) throw new Error("No se recibió access_token.");
 
-      // Intentar obtener role desde el JWT
+      // Role desde el JWT si viene; si no, BARBER por defecto
       const role = decodeJwtRole(token) ?? ("BARBER" as UserRole);
 
-      // ✅ guardar sesión con UN SOLO argumento (objeto)
-      saveSession({ email, role, token });
+      // ✅ Armar objeto Session (incluye ready:true)
+      const session: Session = {
+        email,
+        role,
+        token,
+        ready: true,
+      };
 
+      saveSession(session);
       nav("/app", { replace: true });
     } catch (e: any) {
       setErr(e?.message || "No se pudo iniciar sesión.");
