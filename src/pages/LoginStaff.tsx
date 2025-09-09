@@ -1,129 +1,98 @@
-// src/pages/LoginStaff.tsx
+// partner-web/src/pages/LoginStaff.tsx
 import { useState } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
-import { BRAND } from "@/shared/brand";
-import { saveSession, type UserRole } from "@/shared/auth";
+import { useNavigate } from "react-router-dom";
+import { baseURL, type UserRole } from "@/shared/api";
+import { saveSession, clearSession } from "@/shared/auth";
 
-type ApiMeUser = { id: string; name?: string; email: string; role: UserRole };
+function decodeJwtRole(token: string): UserRole | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    const role = (json?.role || json?.claims?.role || json?.roles)?.toString?.();
+    if (!role) return null;
+    const norm = role.toUpperCase();
+    if (["SUPERADMIN", "OWNER", "ADMIN", "BARBER"].includes(norm)) return norm as UserRole;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function LoginStaff() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
   const nav = useNavigate();
-  const location = useLocation() as any;
-
-  const afterLogin = () => {
-    const rawFrom: string | undefined = location.state?.from;
-    // Evita bucles si `from` apunta a /login
-    const to =
-      rawFrom && !/^\/login(?:\b|\/|\?)/.test(rawFrom) ? rawFrom : "/app";
-    nav(to, { replace: true });
-  };
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMsg("");
+    setErr("");
     setLoading(true);
-
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE}/auth/login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
-
-      if (res.ok) {
-        const data = await res.json(); // { access_token }
-        // Opcional: pedir /auth/me para datos de usuario
-        let me: ApiMeUser | null = null;
-        try {
-          const meRes = await fetch(
-            `${import.meta.env.VITE_API_BASE}/auth/me`,
-            { headers: { Authorization: `Bearer ${data.access_token}` } }
-          );
-          if (meRes.ok) me = await meRes.json();
-        } catch {}
-
-        const user: ApiMeUser = me ?? {
-          id: "me",
-          email,
-          name: email.split("@")[0],
-          role: "ADMIN", // fallback en caso de no tener /me
-        };
-
-        saveSession(
-          { id: String(user.id), name: user.name, email: user.email, role: user.role },
-          data.access_token
-        );
-        setLoading(false);
-        return afterLogin();
+      const res = await fetch(`${baseURL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: pass }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `Error HTTP ${res.status}`);
       }
+      const data = await res.json();
+      const token: string | undefined = data?.access_token || data?.accessToken;
+      if (!token) throw new Error("No se recibió access_token.");
 
-      // DEV bypass
-      const DEV_EMAIL =
-        import.meta.env.VITE_DEV_SUPERADMIN_EMAIL || "admin@axioma-creativa.es";
-      const DEV_PASS = import.meta.env.VITE_DEV_SUPERADMIN_PASS || "admin123";
-      if (email === DEV_EMAIL && password === DEV_PASS) {
-        saveSession(
-          { id: "dev", name: "Super Admin", email, role: "SUPERADMIN" },
-          "dev-token"
-        );
-        setLoading(false);
-        return afterLogin();
-      }
+      // Intentar obtener role desde el JWT
+      const role = decodeJwtRole(token) ?? ("BARBER" as UserRole);
 
-      setMsg("Credenciales inválidas.");
-    } catch (err: any) {
-      setMsg(err?.message || "No se pudo iniciar sesión.");
+      // ✅ guardar sesión con UN SOLO argumento (objeto)
+      saveSession({ email, role, token });
+
+      nav("/app", { replace: true });
+    } catch (e: any) {
+      setErr(e?.message || "No se pudo iniciar sesión.");
+      clearSession();
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-base-200 p-4">
-      <div className="card w-full max-w-sm bg-base-100 shadow">
+    <div className="min-h-[70vh] flex items-center justify-center p-4">
+      <form onSubmit={onSubmit} className="card bg-base-100 shadow-xl w-full max-w-md">
         <div className="card-body">
-          <div className="flex items-center gap-2 mb-2">
-            <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
-            <h1 className="text-lg font-semibold">Acceso Staff</h1>
-          </div>
-          <form className="grid gap-3" onSubmit={onSubmit}>
+          <h2 className="card-title">Acceso Staff</h2>
+          {err && <div className="alert alert-warning">{err}</div>}
+          <label className="form-control w-full">
+            <span className="label-text">Email</span>
             <input
-              className="input input-bordered"
               type="email"
-              placeholder="email"
-              autoFocus
+              className="input input-bordered w-full"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
             />
+          </label>
+          <label className="form-control w-full">
+            <span className="label-text">Contraseña</span>
             <input
-              className="input input-bordered"
               type="password"
-              placeholder="contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              className="input input-bordered w-full"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              required
             />
-            <button
-              className={`btn btn-primary ${loading ? "loading" : ""}`}
-              disabled={loading}
-            >
-              Entrar
+          </label>
+          <div className="card-actions justify-end mt-2">
+            <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={loading}>
+              {loading ? "" : "Entrar"}
             </button>
-          </form>
-          {!!msg && (
-            <div className="alert alert-warning mt-2 text-sm">{msg}</div>
-          )}
-          <div className="mt-2 text-xs opacity-70">
-            ¿Eres cliente? <Link to="/portal" className="link">Ir al Portal</Link>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
