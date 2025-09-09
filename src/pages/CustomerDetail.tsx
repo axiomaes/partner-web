@@ -10,7 +10,7 @@ import {
   deleteCustomer,
   getCustomer,
   type CustomerLite,
-  api, // 👈 para canjear la recompensa
+  api, // 👈 para canjear la recompensa y borrar visitas
 } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 
@@ -28,6 +28,12 @@ function fmt(d?: string | null) {
   const dt = new Date(d);
   return isNaN(dt.getTime()) ? d : dt.toLocaleString();
 }
+function fmtDDMM(iso?: string | null) {
+  if (!iso) return "—";
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+}
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -35,7 +41,8 @@ export default function CustomerDetail() {
   const { role } = useSession();
   const admin = isAdmin(role);
   const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
-  const canRedeem = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")); // 👈 permisos para canjear
+  const canRedeem = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
+  const canEditPunch = ["ADMIN", "BARBER", "OWNER", "SUPERADMIN"].includes(String(role || ""));
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -46,12 +53,27 @@ export default function CustomerDetail() {
   const [deleting, setDeleting] = useState(false);
   const [addingVisit, setAddingVisit] = useState(false);
   const [sendingQr, setSendingQr] = useState(false);
-  const [redeemingId, setRedeemingId] = useState<string | null>(null); // estado para canje
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [undoing, setUndoing] = useState(false);
 
   const headerTitle = useMemo(() => {
     const fallback = id?.slice(0, 8) ?? "";
     return `Cliente — ${customer?.name || fallback}`;
   }, [id, customer]);
+
+  // Para la tarjeta: nº casillas y columnas (horizontal)
+  const CARD_SLOTS = 10;
+  const CARD_COLS = 5;
+
+  // Visitas ordenadas (antiguas → recientes) y recorte a la tarjeta
+  const orderedVisits = useMemo(
+    () => [...visits].sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime()),
+    [visits]
+  );
+  const recentForCard = useMemo(
+    () => orderedVisits.slice(-CARD_SLOTS),
+    [orderedVisits]
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -89,20 +111,41 @@ export default function CustomerDetail() {
     };
   }, [id]);
 
+  async function reloadVisitsAndRewards() {
+    if (!id) return;
+    const [v, r] = await Promise.all([getCustomerVisits(id), getCustomerRewards(id)]);
+    setVisits(Array.isArray(v) ? (v as Visit[]) : []);
+    setRewards(Array.isArray(r) ? (r as Reward[]) : []);
+  }
+
   async function onAddVisit() {
     if (!id) return;
     try {
       setAddingVisit(true);
       await addVisit(id, "Visita manual");
-      const [v, r] = await Promise.all([getCustomerVisits(id), getCustomerRewards(id)]);
-      setVisits(Array.isArray(v) ? (v as Visit[]) : []);
-      setRewards(Array.isArray(r) ? (r as Reward[]) : []); // 👈 refresca recompensas (por si se emitió una)
+      await reloadVisitsAndRewards(); // refresca también recompensas por si se emite una
     } catch (e: any) {
       const msg =
         e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
       setErr(msg);
     } finally {
       setAddingVisit(false);
+    }
+  }
+
+  async function onUndoLast() {
+    if (!id || recentForCard.length === 0) return;
+    const last = recentForCard[recentForCard.length - 1];
+    try {
+      setUndoing(true);
+      await api.delete(`/customers/${id}/visits/${last.id}`);
+      await reloadVisitsAndRewards();
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.message || e?.message || "No se pudo deshacer la última visita.";
+      setErr(msg);
+    } finally {
+      setUndoing(false);
     }
   }
 
@@ -177,10 +220,12 @@ export default function CustomerDetail() {
         <Link to="/app/customers" className="btn btn-ghost btn-sm">
           ← Volver al listado
         </Link>
+        {/* Dejo visible este botón general; también hay controles dentro de la tarjeta */}
         <button
           onClick={onAddVisit}
           className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
-          disabled={addingVisit || !id}
+          disabled={addingVisit || !id || !canEditPunch}
+          title={!canEditPunch ? "Tu rol no puede registrar visitas" : undefined}
         >
           {addingVisit ? "" : "Añadir visita"}
         </button>
@@ -209,7 +254,76 @@ export default function CustomerDetail() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {/* Visitas */}
+          {/* Tarjeta de visitas horizontal (tipo punch-card) */}
+          <div className="card bg-base-100 shadow">
+            <div className="card-body">
+              <h3 className="card-title">Tarjeta de visitas</h3>
+
+              <div
+                className="rounded-2xl border border-base-300 bg-base-200 p-3"
+                style={{}}
+              >
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: `repeat(${CARD_COLS}, minmax(0,1fr))` }}
+                >
+                  {Array.from({ length: CARD_SLOTS }).map((_, i) => {
+                    const v = recentForCard[i]; // i = 0..CARD_SLOTS-1 (antiguas→recientes)
+                    const filled = !!v;
+                    return (
+                      <div
+                        key={i}
+                        className={[
+                          "h-16 sm:h-20 rounded-xl border bg-base-100 flex items-center justify-center",
+                          filled ? "border-emerald-300 ring-1 ring-emerald-200" : "border-base-300",
+                        ].join(" ")}
+                      >
+                        {filled ? (
+                          <span className="text-sm font-medium text-base-content">
+                            {fmtDDMM(v.visitedAt)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-base-content/50">—</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm opacity-70">
+                  Visitas: <b>{orderedVisits.length}</b> (mostrando últimas {CARD_SLOTS})
+                </span>
+                {canEditPunch && (
+                  <>
+                    <button
+                      onClick={onAddVisit}
+                      className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`}
+                      disabled={addingVisit}
+                    >
+                      {addingVisit ? "" : "+ Añadir visita (hoy)"}
+                    </button>
+                    <button
+                      onClick={onUndoLast}
+                      className={`btn btn-sm btn-outline ${undoing ? "loading" : ""}`}
+                      disabled={undoing || recentForCard.length === 0}
+                      title={recentForCard.length === 0 ? "Sin visitas para deshacer" : undefined}
+                    >
+                      {undoing ? "" : "↶ Deshacer última"}
+                    </button>
+                  </>
+                )}
+                {!canEditPunch && (
+                  <span className="text-xs opacity-60">
+                    Solo ADMIN / BARBER / OWNER / SUPERADMIN pueden editar visitas.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Visitas (tabla detalle) */}
           <div className="card bg-base-100 shadow">
             <div className="card-body">
               <h3 className="card-title">Visitas</h3>
@@ -239,7 +353,7 @@ export default function CustomerDetail() {
           </div>
 
           {/* Recompensas */}
-          <div className="card bg-base-100 shadow">
+          <div className="card bg-base-100 shadow md:col-span-2">
             <div className="card-body">
               <h3 className="card-title">Recompensas</h3>
               {rewards.length === 0 ? (
