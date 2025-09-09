@@ -18,6 +18,17 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ProtectedCpanelRoute from "./components/ProtectedCpanelRoute";
 import { useSession } from "@/shared/auth";
 
+// ...
+import DisablePWA from "./components/DisablePWA";
+
+export default function App() {
+  // ...
+  return (
+    <div className="min-h-dvh flex flex-col bg-brand-cream">
+      <DisablePWA /> {/* 👈 mata el SW y limpia caches */}
+      {/* resto del layout */}
+
+
 export default function App(): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
   const s = useSession();
