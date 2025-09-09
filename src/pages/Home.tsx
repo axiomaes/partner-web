@@ -1,5 +1,5 @@
 // partner-web/src/pages/Home.tsx
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "@/shared/auth";
 
@@ -7,11 +7,26 @@ export default function Home() {
   const nav = useNavigate();
   const s = useSession();
 
+  // 👇 Cortafuegos para evitar doble navegación
+  const redirected = useRef(false);
+
   useEffect(() => {
+    if (redirected.current) return; // ya navegamos antes
     if (!s.ready) return;
-    if (!s.token) { nav("/login", { replace: true }); return; }
-    if (s.role === "SUPERADMIN") nav("/cpanel", { replace: true });
-    else nav("/app", { replace: true });
+
+    if (!s.token) {
+      redirected.current = true;
+      nav("/login", { replace: true });
+      return;
+    }
+
+    if (s.role === "SUPERADMIN") {
+      redirected.current = true;
+      nav("/cpanel", { replace: true });
+    } else {
+      redirected.current = true;
+      nav("/app", { replace: true });
+    }
   }, [s.ready, s.token, s.role, nav]);
 
   return (
