@@ -56,14 +56,16 @@ function thisMonthUTC(): string {
 
 export default function CPanelAdminDashboard() {
   const nav = useNavigate();
-  const { role } = useSession();
+  const { role, ready } = useSession();
 
-  // Seguridad extra (el ProtectedRoute ya lo filtra)
+  // Seguridad extra (el ProtectedRoute ya lo filtra).
+  // Importante: esperar a `ready` para evitar falsos negativos de rol.
   useEffect(() => {
+    if (!ready) return;
     if (role !== "SUPERADMIN") {
       nav("/unauthorized", { replace: true });
     }
-  }, [role, nav]);
+  }, [ready, role, nav]);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -97,6 +99,7 @@ export default function CPanelAdminDashboard() {
         const rows: Biz[] = resp?.data?.rows ?? [];
         if (!alive) return;
         setBizList(rows);
+        // Selección automática del primero si no hay uno preseleccionado
         if (rows.length && !businessId) setBusinessId(rows[0].id);
       } catch (e: any) {
         if (!alive) return;
@@ -106,6 +109,7 @@ export default function CPanelAdminDashboard() {
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // solo una vez
 
   const selectedBiz = useMemo(
@@ -166,6 +170,15 @@ export default function CPanelAdminDashboard() {
     [preview]
   );
 
+  // UX: mientras la sesión no esté lista, muestra un spinner (evita parpadeos)
+  if (!ready) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <span className="loading loading-spinner" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -201,6 +214,7 @@ export default function CPanelAdminDashboard() {
               onChange={onChangeBiz}
               className="select select-bordered w-full"
             >
+              {!businessId && <option value="">Selecciona un negocio…</option>}
               {bizList.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} · {b.id}
