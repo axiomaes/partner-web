@@ -1,8 +1,11 @@
 // partner-web/src/pages/Home.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
 import { useSession, clearSession } from "@/shared/auth";
+import { api } from "@/shared/api";
+
+type Biz = { id: string; name: string };
 
 export default function Home() {
   const [open, setOpen] = useState(false);
@@ -13,7 +16,13 @@ export default function Home() {
   const s = useSession();
   const isAuth = !!s.token;
   const userEmail = s.email;
-  const isSuper = s.role === "SUPERADMIN"; // 👈 clave para mostrar CPanel solo a SUPERADMIN
+  const isSuper = s.role === "SUPERADMIN"; // 👈 clave para flujo SUPERADMIN
+
+  // Selector de negocio (solo SUPERADMIN)
+  const [bizLoading, setBizLoading] = useState(false);
+  const [bizErr, setBizErr] = useState<string>("");
+  const [bizList, setBizList] = useState<Biz[]>([]);
+  const [businessId, setBusinessId] = useState<string>("");
 
   useEffect(() => setOpen(false), [pathname]);
 
@@ -26,6 +35,48 @@ export default function Home() {
     clearSession();
     setOpen(false);
     nav("/login", { replace: true });
+  };
+
+  // Redirección/flujo de ingreso
+  useEffect(() => {
+    if (!s.ready) return;                // espera a la sesión
+    if (!s.token) return;                // usuario público: ve el Home normal
+    if (isSuper) {
+      // SUPERADMIN: cargar negocios y mostrar selector
+      let alive = true;
+      (async () => {
+        setBizErr("");
+        setBizLoading(true);
+        try {
+          const resp = await api.get("/cp/admin/businesses");
+          const rows: Biz[] = resp?.data?.rows ?? [];
+          if (!alive) return;
+          setBizList(rows);
+          if (rows.length) setBusinessId(rows[0].id);
+          if (!rows.length) setBizErr("No hay negocios disponibles.");
+        } catch (e: any) {
+          if (!alive) return;
+          setBizErr(e?.response?.data?.message || "No se pudo cargar el listado de negocios.");
+        } finally {
+          setBizLoading(false);
+        }
+      })();
+      return () => { alive = false; };
+    } else {
+      // STAFF (OWNER/ADMIN/BARBER): directo a su panel
+      nav("/app", { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.ready, s.token, s.role]);
+
+  const selectedBiz = useMemo(
+    () => bizList.find((b) => b.id === businessId) || null,
+    [bizList, businessId]
+  );
+
+  const enterCPanel = () => {
+    if (!businessId) return;
+    nav(`/cpanel?businessId=${encodeURIComponent(businessId)}`, { replace: true });
   };
 
   return (
@@ -172,55 +223,135 @@ export default function Home() {
       <main className="flex-1 min-h-screen">
         <div className="md:hidden h-16" />
         <div className="max-w-6xl mx-auto p-4 space-y-6">
-          <section className="hero rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-content">
-            <div className="hero-content flex-col items-stretch md:flex-row gap-6 py-10 w-full">
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
-                  <h1 className="text-3xl font-bold">{BRAND.name}</h1>
-                </div>
-                <p className="opacity-90 mt-2">
-                  Agenda, fidelización y mensajería en un mismo lugar.
-                </p>
 
-                <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => nav("/portal")}
-                    className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
-                  >
-                    Acceso Clientes
-                  </button>
-                  <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
-                    <Link to="/app" className="btn btn-outline h-20">
-                      Staff
-                    </Link>
-                    {isSuper && (
-                      <Link to="/cpanel" className="btn btn-outline h-20">
-                        CPanel
-                      </Link>
-                    )}
+          {/* Si hay sesión y es SUPERADMIN, mostramos selector de negocio */}
+          {s.ready && isAuth && isSuper ? (
+            <section className="hero rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-content">
+              <div className="hero-content flex-col items-stretch md:flex-row gap-6 py-10 w-full">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
+                    <h1 className="text-3xl font-bold">Selecciona un negocio</h1>
                   </div>
-                </div>
-              </div>
+                  <p className="opacity-90 mt-2">
+                    Como SUPERADMIN, elige el negocio al que deseas ingresar.
+                  </p>
 
-              <div className="w-full md:w-80">
-                <div className="card bg-base-100 text-base-content shadow-md">
-                  <div className="card-body">
-                    <h3 className="card-title">Hoy</h3>
-                    <p className="text-sm opacity-70">
-                      Revisa citas, visitas y recompensas.
-                    </p>
-                    <div className="card-actions justify-end">
-                      <Link to={isAuth ? "/app" : "/login"} className="btn btn-sm btn-primary">
-                        {isAuth ? "Ir al panel" : "Entrar"}
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2 card bg-base-100 text-base-content shadow-md">
+                      <div className="card-body gap-3">
+                        {bizErr && (
+                          <div className="alert alert-warning">
+                            <span>{bizErr}</span>
+                          </div>
+                        )}
+                        <label className="label">
+                          <span className="label-text">Negocio</span>
+                        </label>
+                        <select
+                          className="select select-bordered"
+                          value={businessId}
+                          onChange={(e) => setBusinessId(e.target.value)}
+                          disabled={bizLoading || !bizList.length}
+                        >
+                          {!bizList.length && <option>—</option>}
+                          {bizList.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} · {b.id}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={enterCPanel}
+                          className={`btn btn-primary ${bizLoading || !businessId ? "btn-disabled" : ""}`}
+                          disabled={bizLoading || !businessId}
+                        >
+                          {bizLoading ? "Cargando…" : "Entrar al CPanel"}
+                        </button>
+                        {selectedBiz && (
+                          <div className="text-xs opacity-80">
+                            Irás a: <code>/cpanel?businessId={selectedBiz.id}</code>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
+                      <Link to="/app" className="btn btn-outline h-20">
+                        Panel (negocio propio)
+                      </Link>
+                      <Link to="/cpanel" className="btn btn-outline h-20">
+                        CPanel (general)
                       </Link>
                     </div>
                   </div>
                 </div>
+
+                <div className="w-full md:w-80">
+                  <div className="card bg-base-100 text-base-content shadow-md">
+                    <div className="card-body">
+                      <h3 className="card-title">Estado</h3>
+                      <p className="text-sm opacity-70">
+                        Elige un negocio para continuar al CPanel.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          ) : (
+            // Home público (no autenticado o sesión aún no lista)
+            <section className="hero rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-content">
+              <div className="hero-content flex-col items-stretch md:flex-row gap-6 py-10 w-full">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <img src={BRAND.logoUrl} alt={BRAND.name} className="h-10 w-auto" />
+                    <h1 className="text-3xl font-bold">{BRAND.name}</h1>
+                  </div>
+                  <p className="opacity-90 mt-2">
+                    Agenda, fidelización y mensajería en un mismo lugar.
+                  </p>
+
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => nav("/portal")}
+                      className="sm:col-span-2 btn btn-primary btn-lg h-20 text-lg"
+                    >
+                      Acceso Clientes
+                    </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
+                      <Link to="/login" className="btn btn-outline h-20">
+                        Staff
+                      </Link>
+                      {isSuper && (
+                        <Link to="/cpanel" className="btn btn-outline h-20">
+                          CPanel
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full md:w-80">
+                  <div className="card bg-base-100 text-base-content shadow-md">
+                    <div className="card-body">
+                      <h3 className="card-title">Hoy</h3>
+                      <p className="text-sm opacity-70">
+                        Revisa citas, visitas y recompensas.
+                      </p>
+                      <div className="card-actions justify-end">
+                        <Link to={isAuth ? "/app" : "/login"} className="btn btn-sm btn-primary">
+                          {isAuth ? "Ir al panel" : "Entrar"}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="grid md:grid-cols-2 gap-4">
             <div id="reservas" className="card bg-base-100 shadow-sm">
