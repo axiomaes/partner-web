@@ -2,32 +2,26 @@
 import { useState } from "react";
 import { Route, Routes, Navigate, Link, NavLink } from "react-router-dom";
 
+// Páginas públicas
 import Home from "./pages/Home";
 import CustomerOTP from "./pages/CustomerOTP";
 import LoginStaff from "./pages/LoginStaff";
 import Unauthorized from "./pages/Unauthorized";
 
+// Panel (protegido negocio)
 import Dashboard from "./pages/Dashboard";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 import StaffNew from "./pages/StaffNew";
 
+// CPanel (superadmin)
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
+// Guards
 import ProtectedRoute from "./components/ProtectedRoute";
 import ProtectedCpanelRoute from "./components/ProtectedCpanelRoute";
+
 import { useSession } from "@/shared/auth";
-
-// ...
-import DisablePWA from "./components/DisablePWA";
-
-export default function App() {
-  // ...
-  return (
-    <div className="min-h-dvh flex flex-col bg-brand-cream">
-      <DisablePWA /> {/* 👈 mata el SW y limpia caches */}
-      {/* resto del layout */}
-
 
 export default function App(): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
@@ -44,8 +38,14 @@ export default function App(): JSX.Element {
       {/* HEADER */}
       <header className="sticky top-0 z-40 bg-gradient-to-r from-brand-primary to-brand-primary-dark text-white shadow">
         <div className="container-app h-14 flex items-center justify-between gap-3">
-          <Link to="/" className="inline-flex items-center gap-2 font-semibold tracking-wide" onClick={() => setOpen(false)}>
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">✂️</span>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 font-semibold tracking-wide"
+            onClick={() => setOpen(false)}
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
+              ✂️
+            </span>
             <span className="hidden xs:block">Axioma Loyalty</span>
           </Link>
 
@@ -58,29 +58,42 @@ export default function App(): JSX.Element {
             ) : (
               <>
                 <NavLink to="/app" className={navClass}>Panel</NavLink>
-                {isAllowedSuper && <NavLink to="/cpanel" className={navClass}>CPanel</NavLink>}
+                {isAllowedSuper && (
+                  <NavLink to="/cpanel" className={navClass}>CPanel</NavLink>
+                )}
               </>
             )}
           </nav>
 
-          {/* Menú móvil */}
-          <button aria-label="Abrir menú" className="sm:hidden nav-link-base text-white hover:bg-white/10" onClick={() => setOpen(v => !v)}>
+          {/* Botón menú móvil */}
+          <button
+            aria-label="Abrir menú"
+            className="sm:hidden nav-link-base text-white hover:bg-white/10"
+            onClick={() => setOpen((v) => !v)}
+          >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
+        {/* Menú móvil */}
         {open && (
           <div className="sm:hidden bg-brand-primary-dark/95 text-white border-t border-white/10 shadow-lg backdrop-blur">
             <div className="container-app py-2 flex flex-col">
               {!isAuth ? (
-                <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>Entrar</NavLink>
+                <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>
+                  Entrar
+                </NavLink>
               ) : (
                 <>
-                  <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>Panel</NavLink>
+                  <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>
+                    Panel
+                  </NavLink>
                   {isAllowedSuper && (
-                    <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>CPanel</NavLink>
+                    <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>
+                      CPanel
+                    </NavLink>
                   )}
                 </>
               )}
@@ -100,11 +113,11 @@ export default function App(): JSX.Element {
           <Route path="/login" element={<LoginStaff />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
 
-          {/* Panel negocio */}
+          {/* Panel negocio (OWNER/ADMIN/BARBER) */}
           <Route
             path="/app"
             element={
-              <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER"]}>
+              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -112,7 +125,7 @@ export default function App(): JSX.Element {
           <Route
             path="/app/customers"
             element={
-              <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER"]}>
+              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
                 <CustomersNew />
               </ProtectedRoute>
             }
@@ -120,7 +133,7 @@ export default function App(): JSX.Element {
           <Route
             path="/app/customers/new"
             element={
-              <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER"]}>
+              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
                 <CustomersNew />
               </ProtectedRoute>
             }
@@ -128,7 +141,7 @@ export default function App(): JSX.Element {
           <Route
             path="/app/customers/:id"
             element={
-              <ProtectedRoute roles={["ADMIN", "BARBER", "OWNER"]}>
+              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
                 <CustomerDetail />
               </ProtectedRoute>
             }
@@ -157,13 +170,15 @@ export default function App(): JSX.Element {
         </Routes>
       </main>
 
-      {/* FOOTER minimal */}
+      {/* FOOTER */}
       <footer className="mt-6">
         <div className="container-app py-6 text-xs text-slate-500">
           <div className="bg-white rounded-2xl shadow border border-slate-100">
             <div className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p>© {new Date().getFullYear()} Axioma Loyalty</p>
-              <p className="text-slate-400">Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa</p>
+              <p className="text-slate-400">
+                Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa
+              </p>
             </div>
           </div>
         </div>
