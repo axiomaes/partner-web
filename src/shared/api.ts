@@ -35,6 +35,13 @@ function getTokenFromStorage(): string | null {
   }
 }
 
+// 👇 añadido para poder limpiar sesión del panel en 401/403 fuera de /cp/
+function clearPanelSession() {
+  try {
+    localStorage.removeItem(PANEL_STORAGE_KEY);
+  } catch {}
+}
+
 export type PortalSession = { token: string; customerId?: string; businessId?: string };
 
 export function loadPortalSession(): PortalSession | null {
@@ -67,6 +74,36 @@ api.interceptors.request.use((config) => {
   config.headers = headers;
   return config;
 });
+
+// 👇 Interceptor de respuesta: NO redirijas en 401/403 si es endpoint del CPANEL (/cp/*)
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status as number | undefined;
+    const cfgUrl = String(err?.config?.url || "");
+    // config.url puede venir relativa; con baseURL construimos pathname para comparar
+    let path = cfgUrl;
+    try {
+      const u = new URL(cfgUrl, baseURL);
+      path = u.pathname; // e.g. /cp/health
+    } catch {
+      // si falla URL, usamos la cadena tal cual
+    }
+
+    const isCpanel = path.startsWith("/cp/");
+
+    if ((status === 401 || status === 403) && !isCpanel) {
+      // Para el resto de la app, limpiamos sesión y enviamos al login
+      clearPanelSession();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
+    }
+
+    // Importante: dejar que el componente maneje el error (CPanel pinta su <alert/>)
+    return Promise.reject(err);
+  }
+);
 
 /** ============= Axios portal (OTP clientes) ============= */
 export const portalApi: AxiosInstance = axios.create({
