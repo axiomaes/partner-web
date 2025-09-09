@@ -9,11 +9,11 @@ export default function Home() {
   const { pathname } = useLocation();
   const nav = useNavigate();
 
-  // useSession ahora devuelve campos planos: { id, name, email, role, token, ready }
+  // useSession devuelve: { id, name, email, role, token, ready }
   const s = useSession();
   const isAuth = !!s.token;
-  const isSuperadmin = s.role === "SUPERADMIN";
   const userEmail = s.email;
+  const isSuper = s.role === "SUPERADMIN"; // 👈 clave para mostrar CPanel solo a SUPERADMIN
 
   useEffect(() => setOpen(false), [pathname]);
 
@@ -40,11 +40,10 @@ export default function Home() {
 
           <p className="menu-title">Accesos</p>
           <ul className="menu rounded-box">
-            {/* OJO: si tu ruta pública real es /customer-auth, cambia /portal por /customer-auth */}
             <li><Link to="/portal" className="justify-start">Acceso Clientes</Link></li>
             <li><Link to="/app" className="justify-start">Acceso Staff</Link></li>
-            {isSuperadmin && (
-              <li><Link to="/cpanel" className="justify-start">Administrador</Link></li>
+            {isSuper && (
+              <li><Link to="/cpanel" className="justify-start">CPanel</Link></li> // 👈 solo SUPERADMIN
             )}
           </ul>
 
@@ -77,17 +76,14 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Drawer móvil profesional */}
+      {/* Drawer móvil */}
       {open && (
         <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true">
-          {/* overlay */}
           <div
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          {/* panel */}
           <aside className="relative h-full w-[85%] max-w-96 bg-base-100 border-r border-base-300 shadow-2xl p-4">
-            {/* header del panel */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
@@ -120,13 +116,13 @@ export default function Home() {
                   Acceso Staff
                 </button>
               </li>
-              {isSuperadmin && (
+              {isSuper && (
                 <li>
                   <button
                     className="justify-start text-base-content"
-                    onClick={() => go("/cpanel")}
+                    onClick={() => go("/cpanel")}  // 👈 solo SUPERADMIN
                   >
-                    Administrador
+                    CPanel
                   </button>
                 </li>
               )}
@@ -154,7 +150,6 @@ export default function Home() {
               </li>
             </ul>
 
-            {/* pie del menú: estado de sesión */}
             <div className="mt-4 pt-3 border-t border-base-300">
               {isAuth ? (
                 <div className="flex items-center justify-between gap-2">
@@ -196,17 +191,13 @@ export default function Home() {
                   >
                     Acceso Clientes
                   </button>
-                  <div
-                    className={`grid ${
-                      isSuperadmin ? "grid-cols-2 sm:grid-cols-1" : "grid-cols-1"
-                    } gap-3`}
-                  >
+                  <div className="grid grid-cols-2 sm:grid-cols-1 gap-3">
                     <Link to="/app" className="btn btn-outline h-20">
                       Staff
                     </Link>
-                    {isSuperadmin && (
+                    {isSuper && (
                       <Link to="/cpanel" className="btn btn-outline h-20">
-                        Administrador
+                        CPanel
                       </Link>
                     )}
                   </div>
