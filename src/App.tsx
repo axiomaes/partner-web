@@ -18,9 +18,12 @@ import StaffNew from "./pages/StaffNew";
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
 import ProtectedRoute from "./components/ProtectedRoute";
+import { useSession } from "@/shared/auth";
 
 export default function App(): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
+  const s = useSession();
+  const isSuperadmin = s.role === "SUPERADMIN";
 
   const navClass = ({ isActive }: { isActive: boolean }): string =>
     isActive ? "nav-link-active" : "nav-link";
@@ -48,8 +51,10 @@ export default function App(): JSX.Element {
             <NavLink to="/login" className={navClass}>Staff</NavLink>
             {/* Panel de negocio */}
             <NavLink to="/app" className={navClass}>Panel</NavLink>
-            {/* CPanel (solo SUPERADMIN; el enlace puede mostrarse, el guard controla el acceso) */}
-            <NavLink to="/cpanel" className={navClass}>CPanel</NavLink>
+            {/* CPanel (solo SUPERADMIN) */}
+            {isSuperadmin && (
+              <NavLink to="/cpanel" className={navClass}>CPanel</NavLink>
+            )}
           </nav>
 
           {/* Botón menú móvil */}
@@ -72,8 +77,10 @@ export default function App(): JSX.Element {
               <NavLink to="/customer-auth" className={navClass} onClick={() => setOpen(false)}>Acceso clientes</NavLink>
               <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>Staff</NavLink>
               <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>Panel</NavLink>
-              {/* CPanel en móvil */}
-              <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>CPanel</NavLink>
+              {/* CPanel en móvil (solo SUPERADMIN) */}
+              {isSuperadmin && (
+                <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>CPanel</NavLink>
+              )}
             </div>
           </div>
         )}
