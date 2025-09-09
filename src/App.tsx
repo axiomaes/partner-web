@@ -140,7 +140,7 @@ export default function App(): JSX.Element {
 
           {/* CPanel (SUPERADMIN) */}
           <Route
-            path="/cpanel"
+            path="/cpanel/*"
             element={
               <ProtectedRoute roles={["SUPERADMIN"]}>
                 <CPanelAdminDashboard />
