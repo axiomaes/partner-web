@@ -19,25 +19,21 @@ function computeBaseURL(): string {
 
 export const baseURL = computeBaseURL();
 
-/** ============= Axios panel (staff/admin) ============= */
-export const api: AxiosInstance = axios.create({
-  baseURL,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json", Accept: "application/json" },
-});
-
-api.interceptors.request.use((config) => {
-  const headers = AxiosHeaders.from(config.headers || {});
-  const token = getToken();
-  if (token && typeof token === "string" && token.trim() !== "") {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  config.headers = headers;
-  return config;
-});
-
-/** ============= Sesión / API Portal (OTP clientes) ============= */
+/** ============= Helpers de auth ============= */
+const PANEL_STORAGE_KEY = "axioma.session";
 const PORTAL_KEY = "axioma_portal";
+
+function getTokenFromStorage(): string | null {
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    return typeof s?.token === "string" && s.token.trim() ? s.token : null;
+  } catch {
+    return null;
+  }
+}
+
 export type PortalSession = { token: string; customerId?: string; businessId?: string };
 
 export function loadPortalSession(): PortalSession | null {
@@ -55,6 +51,27 @@ export function clearPortalSession() {
   localStorage.removeItem(PORTAL_KEY);
 }
 
+/** ============= Axios panel (staff/admin) ============= */
+export const api: AxiosInstance = axios.create({
+  baseURL,
+  timeout: 15000,
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
+});
+
+// Adjunta siempre Authorization: Bearer <token>
+// - 1º intenta con getToken() (si lo expone auth.ts)
+// - 2º fallback a localStorage 'axioma.session'
+api.interceptors.request.use((config) => {
+  const headers = AxiosHeaders.from(config.headers || {});
+  const t1 = typeof getToken === "function" ? getToken() : null;
+  const t2 = getTokenFromStorage();
+  const token = (t1 && t1.trim()) ? t1 : (t2 && t2.trim()) ? t2 : null;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  config.headers = headers;
+  return config;
+});
+
+/** ============= Axios portal (OTP clientes) ============= */
 export const portalApi: AxiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -85,7 +102,9 @@ type CreatedCustomer = { id: string; name: string; existed?: boolean };
 /** Usuarios */
 export const listUsers = () =>
   api.get("/users").then((r) =>
-    Array.isArray(r.data) ? (r.data as UserLite[]) : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
+    Array.isArray(r.data)
+      ? (r.data as UserLite[])
+      : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
   );
 
 export const createUser = (email: string, password: string, role: UserRole) =>
@@ -97,12 +116,14 @@ export const createStaff = (email: string, password: string, role: "ADMIN" | "BA
 
 /** Clientes */
 export const listCustomers = () =>
-  api.get("/customers").then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
+  api
+    .get("/customers")
+    .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
 export const createCustomer = (name: string, phone: string) =>
   api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
 
-/** 👉 NUEVO: obtener un cliente (para mostrar nombre/phone/email) */
+/** Obtener un cliente por id */
 export async function getCustomer(id: string): Promise<CustomerLite | null> {
   try {
     const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
@@ -110,9 +131,8 @@ export async function getCustomer(id: string): Promise<CustomerLite | null> {
       return r.data as CustomerLite;
     }
   } catch {
-    // sigue al fallback
+    // fallback
   }
-  // Fallback: buscar en la lista si el endpoint no existe
   try {
     const all = await listCustomers();
     const hit = (all as any[]).find((c) => c.id === id) ?? null;
@@ -122,7 +142,7 @@ export async function getCustomer(id: string): Promise<CustomerLite | null> {
   }
 }
 
-/** 👉 NUEVO: eliminar cliente con manejo de 403/errores */
+/** Eliminar cliente (devuelve error claro en 403) */
 export async function deleteCustomer(id: string): Promise<void> {
   const r = await api.delete(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return;
@@ -202,7 +222,6 @@ export function addVisitFromQrPayload(payload: string) {
   const notes = typeof parsed.notes === "string" ? parsed.notes : "Visita por QR";
   return addVisit(parsed.customerId, notes);
 }
-
 
 /** ============= Búsqueda/Check-in staff ============= */
 type LookupInput = { phone?: string; email?: string };
