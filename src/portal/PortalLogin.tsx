@@ -1,5 +1,5 @@
 // partner-web/src/portal/PortalLogin.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   requestCustomerOtp,
@@ -10,8 +10,28 @@ import {
 
 type Mode = "phone" | "email";
 
+function normalizePhone(raw: string) {
+  // Quita no dígitos; si empieza sin +, puedes anteponer +34 (ajústalo a tu caso)
+  const digits = (raw || "").replace(/\D/g, "");
+  return digits.startsWith("00")
+    ? `+${digits.slice(2)}`
+    : digits.startsWith("34") && !raw.startsWith("+")
+    ? `+${digits}`
+    : raw.startsWith("+")
+    ? raw
+    : digits
+    ? `+${digits}`
+    : "";
+}
+
+function normalizeEmail(raw: string) {
+  return (raw || "").trim().toLowerCase();
+}
+
 export default function PortalLogin() {
   const nav = useNavigate();
+  const mounted = useRef(true);
+
   const existing = loadPortalSession();
 
   const [mode, setMode] = useState<Mode>("phone");
@@ -23,48 +43,96 @@ export default function PortalLogin() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
 
-  // si ya está logueado, entra directo
+  // Deriva placeholders bonitos
+  const phonePh = useMemo(() => "+34 6XXXXXXXX", []);
+  const emailPh = useMemo(() => "tucorreo@dominio.com", []);
+
+  // si ya está logueado en portal, entra directo
   useEffect(() => {
-    if (existing?.token) nav("/portal/points", { replace: true });
+    mounted.current = true;
+    if (existing?.token) {
+      nav("/portal/points", { replace: true });
+    }
+    return () => {
+      mounted.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const setSafeMsg = (m: string) => {
+    if (mounted.current) setMsg(m);
+  };
+  const setSafeLoading = (v: boolean) => {
+    if (mounted.current) setLoading(v);
+  };
+
   const handleRequest = async () => {
-    setMsg(""); setLoading(true);
+    setSafeMsg("");
+    setSafeLoading(true);
     try {
       if (mode === "phone") {
-        if (!phone) throw new Error("Introduce tu número de móvil.");
-        await requestCustomerOtp({ phone });
+        const p = normalizePhone(phone);
+        if (!p) throw new Error("Introduce tu número de móvil.");
+        await requestCustomerOtp({ phone: p });
       } else {
-        if (!email) throw new Error("Introduce tu correo electrónico.");
-        await requestCustomerOtp({ email });
+        const e = normalizeEmail(email);
+        if (!e) throw new Error("Introduce tu correo electrónico.");
+        await requestCustomerOtp({ email: e });
       }
+      if (!mounted.current) return;
       setStep("code");
-      setMsg("Te hemos enviado un código. Revisa WhatsApp/SMS o tu correo.");
+      setSafeMsg("Te hemos enviado un código. Revisa WhatsApp/SMS o tu correo.");
     } catch (e: any) {
-      setMsg(e?.response?.data?.message || e.message || "No se pudo enviar el código.");
+      setSafeMsg(e?.response?.data?.message || e?.message || "No se pudo enviar el código.");
     } finally {
-      setLoading(false);
+      setSafeLoading(false);
     }
   };
 
   const handleVerify = async () => {
-    setMsg(""); setLoading(true);
+    setSafeMsg("");
+    setSafeLoading(true);
     try {
-      const payload = mode === "phone" ? { phone, code } : { email, code };
+      const payload =
+        mode === "phone"
+          ? { phone: normalizePhone(phone), code }
+          : { email: normalizeEmail(email), code };
+
+      if (!payload.code || payload.code.trim().length < 4) {
+        throw new Error("Código inválido. Debe tener al menos 4 dígitos.");
+      }
+
       const res = await verifyCustomerOtp(payload);
-      // res: { access_token, user, customerId, businessId, exp, ... } (ajusta según tu API)
-      if (!res?.access_token) throw new Error("Token inválido en la respuesta.");
+      // Se espera: { access_token, customerId, businessId, ... }
+      const token: string | undefined = res?.access_token;
+      const customerId: string | undefined = res?.customerId;
+      const businessId: string | undefined = res?.businessId;
+
+      if (!token) throw new Error("Token inválido en la respuesta.");
+      if (!businessId)
+        throw new Error(
+          "No se recibió el identificador del negocio. Contacta con soporte."
+        );
+
       savePortalSession({
-        token: res.access_token,
-        customerId: res.customerId,
-        businessId: res.businessId,
+        token,
+        customerId,
+        businessId,
       });
+
+      if (!mounted.current) return;
       nav("/portal/points", { replace: true });
     } catch (e: any) {
-      setMsg(e?.response?.data?.message || e.message || "Código inválido o expirado.");
+      setSafeMsg(e?.response?.data?.message || e?.message || "Código inválido o expirado.");
     } finally {
-      setLoading(false);
+      setSafeLoading(false);
     }
+  };
+
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setStep("ask");
+    setMsg("");
   };
 
   return (
@@ -81,14 +149,16 @@ export default function PortalLogin() {
             <button
               role="tab"
               className={`tab ${mode === "phone" ? "tab-active" : ""}`}
-              onClick={() => { setMode("phone"); setStep("ask"); setMsg(""); }}
+              onClick={() => switchMode("phone")}
+              disabled={loading}
             >
               Móvil
             </button>
             <button
               role="tab"
               className={`tab ${mode === "email" ? "tab-active" : ""}`}
-              onClick={() => { setMode("email"); setStep("ask"); setMsg(""); }}
+              onClick={() => switchMode("email")}
+              disabled={loading}
             >
               Correo
             </button>
@@ -104,9 +174,11 @@ export default function PortalLogin() {
                   </label>
                   <input
                     className="input input-bordered"
-                    placeholder="+34 6XXXXXXXX"
+                    placeholder={phonePh}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    inputMode="tel"
+                    disabled={loading}
                   />
                 </div>
               ) : (
@@ -116,16 +188,19 @@ export default function PortalLogin() {
                   </label>
                   <input
                     className="input input-bordered"
-                    placeholder="tucorreo@dominio.com"
+                    placeholder={emailPh}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    inputMode="email"
+                    disabled={loading}
                   />
                 </div>
               )}
 
               <button
-                className={`btn btn-primary w-full ${loading ? "btn-disabled" : ""}`}
+                className="btn btn-primary w-full"
                 onClick={handleRequest}
+                disabled={loading}
               >
                 {loading ? "Enviando..." : "Enviar código"}
               </button>
@@ -137,7 +212,8 @@ export default function PortalLogin() {
             <div className="mt-3 space-y-3">
               <div className="alert alert-info">
                 <span>
-                  Introduce el código que te hemos enviado a {mode === "phone" ? "tu móvil" : "tu correo"}.
+                  Introduce el código que te hemos enviado a{" "}
+                  {mode === "phone" ? "tu móvil" : "tu correo"}.
                 </span>
               </div>
               <div className="form-control">
@@ -150,19 +226,26 @@ export default function PortalLogin() {
                   inputMode="numeric"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
+                  disabled={loading}
                 />
               </div>
 
               <div className="flex gap-2">
                 <button
-                  className={`btn btn-primary flex-1 ${loading ? "btn-disabled" : ""}`}
+                  className="btn btn-primary flex-1"
                   onClick={handleVerify}
+                  disabled={loading}
                 >
                   {loading ? "Verificando..." : "Entrar"}
                 </button>
                 <button
                   className="btn btn-ghost"
-                  onClick={() => { setStep("ask"); setCode(""); }}
+                  onClick={() => {
+                    setStep("ask");
+                    setCode("");
+                    setMsg("");
+                  }}
+                  disabled={loading}
                 >
                   Cambiar dato
                 </button>
@@ -170,12 +253,12 @@ export default function PortalLogin() {
             </div>
           )}
 
-          {!!msg && (
-            <div className="mt-3 text-sm opacity-80">{msg}</div>
-          )}
+          {!!msg && <div className="mt-3 text-sm opacity-80">{msg}</div>}
 
           <div className="mt-4 text-center">
-            <a className="link" href="/">← Volver al inicio</a>
+            <a className="link" href="/">
+              ← Volver al inicio
+            </a>
           </div>
         </div>
       </div>
