@@ -2,45 +2,56 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
+import { postLoginPath } from "./shared/redirects";
 
-/* ==== Páginas ==== */
-import Home from "./pages/Home";
+/* Páginas */
 import LoginStaff from "./pages/LoginStaff";
 import Unauthorized from "./pages/Unauthorized";
 
-/* Portal clientes */
+/* Portal clientes (si los usas aparte) */
 import CustomerOTP from "./pages/CustomerOTP";
 import PortalPoints from "./pages/PortalPoints";
 
-/* Staff */
+/* Staff + Panel negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-
-/* Dashboard negocio */
 import AdminPanel from "./pages/AdminPanel";
 import CustomersPage from "./pages/CustomersPage";
 import CustomerDetail from "./pages/CustomerDetail";
 import CustomersNew from "./pages/CustomersNew";
 import AdminUsers from "./pages/AdminUsers";
 
-/* CPanel (solo SUPERADMIN) */
+/* CPanel (superadmin) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
+function AlreadyLoggedRedirect() {
+  const s = useSession();
+  if (!s.ready) return null;
+  if (s.token) return <Navigate to={postLoginPath(s)} replace />;
+  return null;
+}
+
 export default function AppRouter() {
-  const session = useSession();
+  const s = useSession();
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rutas públicas */}
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<LoginStaff />} />
-        <Route path="/unauthorized" element={<Unauthorized />} />
+        {/* Primera pantalla = Login */}
+        <Route
+          path="/"
+          element={
+            <>
+              <AlreadyLoggedRedirect />
+              <LoginStaff />
+            </>
+          }
+        />
 
-        {/* Portal clientes */}
+        {/* Portal clientes (opcionales) */}
         <Route path="/portal" element={<CustomerOTP />} />
         <Route path="/portal/points" element={<PortalPoints />} />
 
-        {/* Staff check-in */}
+        {/* Staff (requiere sesión) */}
         <Route
           path="/staff/checkin"
           element={
@@ -50,7 +61,7 @@ export default function AppRouter() {
           }
         />
 
-        {/* Dashboard negocio (OWNER/ADMIN/BARBER) */}
+        {/* Panel negocio */}
         <Route
           path="/app/*"
           element={
@@ -59,10 +70,11 @@ export default function AppRouter() {
                 <Route
                   index
                   element={
-                    isAdmin(session) ? (
+                    isAdmin(s) ? (
                       <Navigate to="admin" replace />
                     ) : (
-                      <Navigate to="/unauthorized" replace />
+                      // Si no es ADMIN/OWNER/SUPERADMIN, deja al BARBER donde elijas
+                      <Navigate to="/staff/checkin" replace />
                     )
                   }
                 />
@@ -81,7 +93,7 @@ export default function AppRouter() {
           path="/cpanel"
           element={
             <RouteGuard>
-              {isSuperAdmin(session) ? (
+              {isSuperAdmin(s) ? (
                 <CPanelAdminDashboard />
               ) : (
                 <Navigate to="/unauthorized" replace />
@@ -90,7 +102,9 @@ export default function AppRouter() {
           }
         />
 
-        {/* Fallback */}
+        {/* Secundarias */}
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
