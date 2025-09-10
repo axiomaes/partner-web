@@ -70,22 +70,76 @@ export function useSession(): Session {
   );
 }
 
+/* --------------------------- Normalización de entrada --------------------------- */
+/**
+ * Los guards aceptan:
+ * - Session completa
+ * - Cualquier objeto con { role?: string }
+ * - Un string directo con el rol
+ */
+export type GuardInput =
+  | Session
+  | { role?: string | UserRole }
+  | string
+  | null
+  | undefined;
+
+function normalizeRole(input: GuardInput): UserRole {
+  const raw =
+    typeof input === "string"
+      ? input
+      : input && typeof input === "object"
+      ? // @ts-expect-error — leer role si existe
+        (input.role as string | undefined)
+      : undefined;
+
+  const up = String(raw || "").toUpperCase();
+  if (up === "SUPERADMIN" || up === "OWNER" || up === "ADMIN" || up === "BARBER") {
+    return up as UserRole;
+  }
+  // Valor por defecto conservador
+  return "BARBER";
+}
+
 /* --------------------------------- Helpers rol --------------------------------- */
 
-// Útil para checks ad-hoc
-export function hasRole(s: Session, roles: UserRole[] = []): boolean {
-  return roles.includes(s.role);
+// Útil para checks ad-hoc con input flexible
+export function hasRole(input: GuardInput, roles: UserRole[] = []): boolean {
+  return roles.includes(normalizeRole(input));
 }
 
 // SUPERADMIN: rol superior, control total del sistema / CPanel global
-export function isSuperAdmin(s: Session): boolean {
-  return s.role === "SUPERADMIN";
+export function isSuperAdmin(input: GuardInput): boolean {
+  return normalizeRole(input) === "SUPERADMIN";
 }
 
 // Admin de NEGOCIO (no global): OWNER o ADMIN
 // Importante: NO incluye SUPERADMIN para evitar confusiones en vistas de negocio.
-export function isAdmin(s: Session): boolean {
-  return s.role === "OWNER" || s.role === "ADMIN";
+export function isAdmin(input: GuardInput): boolean {
+  const r = normalizeRole(input);
+  return r === "OWNER" || r === "ADMIN";
 }
 
-// Staff del negoci
+// Staff del negocio (toda la operativa diaria)
+export function isBusinessStaff(input: GuardInput): boolean {
+  const r = normalizeRole(input);
+  return r === "OWNER" || r === "ADMIN" || r === "BARBER";
+}
+
+// Roles atómicos (por comodidad)
+export function isOwner(input: GuardInput): boolean { return normalizeRole(input) === "OWNER"; }
+export function isBarber(input: GuardInput): boolean { return normalizeRole(input) === "BARBER"; }
+
+/* ------------------------------- Helpers de ruta ------------------------------- */
+export function canAccessCPanel(input: GuardInput): boolean {
+  return isSuperAdmin(input);
+}
+
+export function canAccessBusinessPanel(input: GuardInput): boolean {
+  return isBusinessStaff(input);
+}
+
+/* ---------------------------------- Helpers UX --------------------------------- */
+export function displayName(s: Session): string {
+  return s.name || s.email || "Usuario";
+}
