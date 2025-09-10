@@ -9,11 +9,13 @@ export type Session = {
   role: UserRole;
   token: string;
   ready: boolean;
-  /** Nombre visible del usuario o negocio (opcional, para UI) */
+  /** Nombre visible (opcional) */
   name?: string;
-  /** Negocio al que pertenece el staff; null/undefined para SUPERADMIN */
+  /** Negocio del staff; null/undefined para SUPERADMIN */
   businessId?: string | null;
 };
+
+type RoleLike = Session | UserRole;
 
 const KEY = "axioma.session";
 
@@ -51,19 +53,14 @@ export function clearSession() {
 /* ===== Hook de sesión ===== */
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
-
-  useEffect(() => {
-    setSession(loadSession());
-  }, []);
-
-  // Nunca devolvemos algo que rompa la UI
+  useEffect(() => { setSession(loadSession()); }, []);
   return useMemo(
     () =>
       session ?? ({
         email: "",
         role: "BARBER",
         token: "",
-        ready: true,        // listo para que Home/guards no parpadeen
+        ready: true,
         name: "",
         businessId: null,
       } as Session),
@@ -72,21 +69,25 @@ export function useSession(): Session {
 }
 
 /* ===== Helpers de rol/permiso ===== */
-export const isSuperAdmin = (s: Session) => s.role === "SUPERADMIN";
-export const isOwner      = (s: Session) => s.role === "OWNER";
-export const isBarber     = (s: Session) => s.role === "BARBER";
+function getRole(x: RoleLike): UserRole {
+  return (typeof x === "string" ? x.toUpperCase() : x.role) as UserRole;
+}
 
-/**
- * isAdmin: “admin de negocio”.
- * Consideramos ADMIN y OWNER como administradores de su negocio.
- */
-export const isAdmin      = (s: Session) => s.role === "ADMIN" || s.role === "OWNER";
-
+export const isSuperAdmin = (who: RoleLike) => getRole(who) === "SUPERADMIN";
+export const isOwner      = (who: RoleLike) => getRole(who) === "OWNER";
+export const isBarber     = (who: RoleLike) => getRole(who) === "BARBER";
+/** ADMIN de negocio = ADMIN u OWNER */
+export const isAdmin      = (who: RoleLike) => {
+  const r = getRole(who);
+  return r === "ADMIN" || r === "OWNER";
+};
 /** Cualquier staff (no superadmin) */
-export const isStaff      = (s: Session) => s.role === "OWNER" || s.role === "ADMIN" || s.role === "BARBER";
-
+export const isStaff      = (who: RoleLike) => {
+  const r = getRole(who);
+  return r === "OWNER" || r === "ADMIN" || r === "BARBER";
+};
 /** Chequea si el rol actual está en la lista permitida */
-export const hasRole = (s: Session, roles: UserRole[]) => roles.includes(s.role);
+export const hasRole = (who: RoleLike, roles: UserRole[]) => roles.includes(getRole(who));
 
 /** Puede actuar sobre un negocio dado (superadmin o staff del mismo negocio) */
 export const canActOnBusiness = (s: Session, businessId?: string | null) =>
