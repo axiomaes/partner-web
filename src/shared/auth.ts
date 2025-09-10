@@ -3,17 +3,22 @@ import { useEffect, useMemo, useState } from "react";
 
 export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
 
+/**
+ * SUPERADMIN  → controla TODO el sistema (CPanel global).
+ * OWNER/ADMIN → administran su propio negocio.
+ * BARBER      → operativa diaria (crear cliente, añadir visita, etc.).
+ */
 export type Session = {
   email: string;
   role: UserRole;
   token: string;
   ready: boolean;
-  name?: string; // opcional para cabeceras/ux
+  name?: string; // opcional: usado en cabeceras/UX
 };
 
 const KEY = "axioma.session";
 
-// ---- Persistencia ----
+/* ------------------------- Persistencia en localStorage ------------------------- */
 export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(KEY);
@@ -43,7 +48,7 @@ export function clearSession() {
   try { localStorage.removeItem(KEY); } catch {}
 }
 
-// ---- Hook de sesión ----
+/* ---------------------------------- Hook React --------------------------------- */
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
 
@@ -58,49 +63,29 @@ export function useSession(): Session {
         email: "",
         role: "BARBER",
         token: "",
-        ready: true,
+        ready: true, // listo para que Home redirija a /login sin parpadeo
         name: "",
       },
     [session]
   );
 }
 
-// ---- Helpers de roles (semántica clara) ----
+/* --------------------------------- Helpers rol --------------------------------- */
 
 // Útil para checks ad-hoc
-export function hasRole(session: Session, roles: UserRole[] = []): boolean {
-  return roles.includes(session.role);
+export function hasRole(s: Session, roles: UserRole[] = []): boolean {
+  return roles.includes(s.role);
 }
 
 // SUPERADMIN: rol superior, control total del sistema / CPanel global
-export function isSuperAdmin(session: Session): boolean {
-  return session.role === "SUPERADMIN";
+export function isSuperAdmin(s: Session): boolean {
+  return s.role === "SUPERADMIN";
 }
 
 // Admin de NEGOCIO (no global): OWNER o ADMIN
 // Importante: NO incluye SUPERADMIN para evitar confusiones en vistas de negocio.
-export function isAdmin(session: Session): boolean {
-  return session.role === "OWNER" || session.role === "ADMIN";
+export function isAdmin(s: Session): boolean {
+  return s.role === "OWNER" || s.role === "ADMIN";
 }
 
-// Staff del negocio (toda la operativa diaria)
-export function isBusinessStaff(session: Session): boolean {
-  return session.role === "OWNER" || session.role === "ADMIN" || session.role === "BARBER";
-}
-
-// Roles atómicos (por comodidad)
-export function isOwner(session: Session): boolean { return session.role === "OWNER"; }
-export function isBarber(session: Session): boolean { return session.role === "BARBER"; }
-
-// Ayudas de routing (recomendadas)
-export function canAccessCPanel(session: Session): boolean {
-  return isSuperAdmin(session);
-}
-export function canAccessBusinessPanel(session: Session): boolean {
-  return isBusinessStaff(session);
-}
-
-// Helper UX para mostrar nombre
-export function displayName(session: Session): string {
-  return session.name || session.email || "Usuario";
-}
+// Staff del negoci
