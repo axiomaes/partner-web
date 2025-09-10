@@ -1,14 +1,8 @@
 // src/pages/LoginStaff.tsx
 import { useEffect, useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { saveSession, useSession, type Session } from "../shared/auth";
-import { postLoginPath } from "../shared/redirects";
-
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  (location.hostname.endsWith(".axioma-creativa.es")
-    ? "https://axioma-api.stacks.axioma-creativa.es"
-    : "http://localhost:3000");
+import { useSession } from "../shared/auth";
+import { authLogin, postLoginPathByRole } from "../shared/api";
 
 export default function LoginStaff() {
   const nav = useNavigate();
@@ -16,7 +10,7 @@ export default function LoginStaff() {
 
   // Si ya hay sesión válida, manda directo a su destino
   if (s.ready && s.token) {
-    return <Navigate to={postLoginPath(s)} replace />;
+    return <Navigate to={postLoginPathByRole(s.role)} replace />;
   }
 
   const [email, setEmail] = useState("");
@@ -29,40 +23,11 @@ export default function LoginStaff() {
     setErr(null);
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // Backend suele devolver { message } o { error }
-        const msg = json?.message || json?.error || "No autorizado";
-        throw new Error(msg);
-      }
-
-      // La API debe devolver { access_token, role?, email?, name?, businessId? }
-      const token: string = json?.access_token || json?.token;
-      if (!token) throw new Error("Token ausente en la respuesta");
-
-      // Mejor si el backend manda role explícito; si no, usa el que tengas localmente o "BARBER".
-      const role = (json?.role || "BARBER") as Session["role"];
-      const sess: Session = {
-        email: json?.email || email,
-        role,
-        token,
-        ready: true,
-        name: json?.name,
-        businessId:
-          json?.businessId === undefined || json?.businessId === null
-            ? null
-            : String(json.businessId),
-      };
-      saveSession(sess);
+      // Centraliza login y persistencia de sesión
+      const { session, next } = await authLogin(email, password);
 
       // Redirección por rol
-      nav(postLoginPath(sess), { replace: true });
+      nav(next || postLoginPathByRole(session.role), { replace: true });
     } catch (e: any) {
       setErr(e?.message || "No autorizado");
     } finally {
