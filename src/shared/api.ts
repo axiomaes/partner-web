@@ -1,6 +1,6 @@
 // partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
-import { saveSession } from "./auth"; // ← asegúrate de tenerlo exportado
+import { saveSession } from "./auth";
 
 /** ===== Tipos compartidos ===== */
 export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
@@ -50,9 +50,7 @@ export function loadPortalSession(): PortalSession | null {
   try { const raw = localStorage.getItem(PORTAL_KEY); return raw ? (JSON.parse(raw) as PortalSession) : null; }
   catch { return null; }
 }
-export function savePortalSession(s: PortalSession) {
-  localStorage.setItem(PORTAL_KEY, JSON.stringify(s));
-}
+export function savePortalSession(s: PortalSession) { localStorage.setItem(PORTAL_KEY, JSON.stringify(s)); }
 export function clearPortalSession() { localStorage.removeItem(PORTAL_KEY); }
 
 /** ============= JWT helpers (ligeros) ============= */
@@ -86,7 +84,7 @@ export function postLoginPathByRole(role: UserRole): string {
     case "SUPERADMIN": return "/cpanel";
     case "OWNER":
     case "ADMIN":      return "/app/admin";
-    case "BARBER":     return "/staff/checkin"; // o "/app"
+    case "BARBER":     return "/staff/checkin";
   }
 }
 
@@ -99,9 +97,9 @@ export const api: AxiosInstance = axios.create({
 
 // Adjunta siempre Authorization desde localStorage 'axioma.session'
 api.interceptors.request.use((config) => {
-  // Evita meter Authorization en /auth/login
   const url = String(config.url || "");
-  const path = new URL(url, baseURL).pathname;
+  let path = url;
+  try { path = new URL(url, baseURL).pathname; } catch {}
   const headers = AxiosHeaders.from(config.headers || {});
   if (path !== "/auth/login") {
     const token = getTokenFromStorage();
@@ -111,7 +109,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de respuesta: NO redirijas en 401/403 si es /cp/* ni si es /auth/login ni si es OPTIONS
+// Interceptor de respuesta: NO redirijas en 401/403 si es /cp/* ni /auth/login ni OPTIONS
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -156,11 +154,8 @@ export async function authLogin(email: string, password: string) {
   }
   const token: string = r.data?.access_token || r.data?.token;
   if (!token) throw new Error("Token ausente en la respuesta");
-
-  // Expiración: si ya está vencido, forzar error
   if (isExpired(token)) throw new Error("Sesión caducada. Inicia sesión de nuevo.");
 
-  // Preferimos role del backend; si no viene, inferimos del JWT
   const role = (r.data?.role as UserRole) || roleFromToken(token) || "BARBER";
   const businessId = r.data?.businessId ?? businessFromToken(token) ?? null;
 
@@ -176,6 +171,35 @@ export async function authLogin(email: string, password: string) {
 
   const next = postLoginPathByRole(role);
   return { session, next };
+}
+
+/** ============= Descubrimiento de endpoint CP (negocios) ============= */
+export type CpBusiness = { id: string; name?: string; displayName?: string };
+
+const CP_BIZ_ENDPOINTS = [
+  "/cp/admin/businesses",       // probable por admin-businesses.controller.ts
+  "/cp/businesses",
+  "/cp/admin/businesses/list",
+  "/admin/businesses",
+  "/businesses",
+];
+
+export async function listCpBusinesses(): Promise<CpBusiness[]> {
+  let lastErr: any = null;
+  for (const path of CP_BIZ_ENDPOINTS) {
+    try {
+      const r = await api.get(path, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) {
+        const items = (Array.isArray(r.data) ? r.data : r.data?.items ?? r.data?.data ?? []) as CpBusiness[];
+        if (items && items.length >= 0) return items;
+      }
+      if (r.status !== 404) lastErr = new Error(r.data?.message || `HTTP ${r.status} en ${path}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  throw new Error("No existe endpoint CP para listar negocios (probados: " + CP_BIZ_ENDPOINTS.join(", ") + ")");
 }
 
 /** ============= Tipos/Helpers panel ============= */
