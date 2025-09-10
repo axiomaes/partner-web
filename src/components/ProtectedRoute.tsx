@@ -1,39 +1,85 @@
 // src/components/ProtectedRoute.tsx
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, Outlet } from "react-router-dom";
 import { useSession, hasRole, type UserRole } from "@/shared/auth";
 
-type Props = {
+/** Props para proteger una ruta concreta (componente hijo) */
+type ProtectedRouteProps = {
   /** Roles permitidos para acceder a la ruta */
   roles: UserRole[];
-  /** Ruta a la que redirigir si tiene sesión pero no permiso */
+  /** Ruta de fallback cuando hay sesión pero no permisos (por defecto /unauthorized) */
   to?: string;
   /** Contenido protegido */
   children: JSX.Element;
 };
 
-export default function ProtectedRoute({ roles, to = "/unauthorized", children }: Props) {
+/**
+ * Guard para rutas “hoja”: protege un componente concreto.
+ * - Espera a que la sesión esté lista (`s.ready`) para evitar parpadeos.
+ * - Si no hay sesión -> /login (con `from` incluyendo query + hash).
+ * - Si hay sesión pero sin permisos -> `to` (por defecto /unauthorized).
+ */
+export default function ProtectedRoute({
+  roles,
+  to = "/unauthorized",
+  children,
+}: ProtectedRouteProps) {
   const s = useSession();
   const loc = useLocation();
 
-  // Espera a que la sesión esté hidratada para evitar parpadeos/redirecciones falsas
-  if (!s.ready) {
+  // 1) Espera hidratación de sesión (evita saltos visuales y redirecciones en falso)
+  if (!s.ready) return null;
+
+  // 2) Sin sesión -> login (conserva la ruta original + query + hash para volver luego)
+  if (!s.token) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <span className="loading loading-spinner" />
-      </div>
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: loc.pathname + loc.search + loc.hash }}
+      />
     );
   }
 
-  // Sin sesión -> login (guard universal)
-  if (!s.token) {
-    return <Navigate to="/login" replace state={{ from: loc.pathname + loc.search }} />;
-  }
-
-  // Con sesión pero sin rol permitido -> to (por defecto /unauthorized)
+  // 3) Con sesión pero sin rol permitido -> fallback
   if (!hasRole(s, roles)) {
     return <Navigate to={to} replace />;
   }
 
-  // Acceso concedido
+  // 4) Acceso concedido
   return children;
+}
+
+/** Props para proteger un layout con rutas anidadas (usa <Outlet/>) */
+type ProtectedLayoutProps = {
+  roles: UserRole[];
+  to?: string;
+};
+
+/**
+ * Variante para rutas con hijos anidados:
+ * <Route element={<ProtectedLayout roles={...}/>}>
+ *   <Route path="..." element={<Page/>}/>
+ * </Route>
+ */
+export function ProtectedLayout({ roles, to = "/unauthorized" }: ProtectedLayoutProps) {
+  const s = useSession();
+  const loc = useLocation();
+
+  if (!s.ready) return null;
+
+  if (!s.token) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: loc.pathname + loc.search + loc.hash }}
+      />
+    );
+  }
+
+  if (!hasRole(s, roles)) {
+    return <Navigate to={to} replace />;
+  }
+
+  return <Outlet />;
 }
