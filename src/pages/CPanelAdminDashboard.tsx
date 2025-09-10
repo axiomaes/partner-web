@@ -1,8 +1,22 @@
 // partner-web/src/pages/CPanelAdminDashboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { api, listCpBusinesses, type CpBusiness } from "@/shared/api";
+import { makeApi, listCpBusinesses, type CpBusiness } from "@/lib/api";
 import { useSession } from "@/shared/auth";
 
+/** ================= Base URL (igual criterio que el resto del proyecto) ================= */
+const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
+function computeApiBase(): string {
+  const env = (import.meta as any)?.env?.VITE_API_BASE;
+  if (env && typeof env === "string" && env.trim() !== "") return env;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host.endsWith(".axioma-creativa.es")) return PROD_API;
+  }
+  return "http://localhost:3000";
+}
+const API_BASE = computeApiBase();
+
+/** =================== Utils =================== */
 function fmtYYYYMM(d: Date) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -10,7 +24,21 @@ function fmtYYYYMM(d: Date) {
 }
 
 export default function CPanelAdminDashboard() {
-  useSession(); // asegura hidratación; el guard ya valida SUPERADMIN
+  // El guard ProtectedCpanelRoute ya asegura SUPERADMIN y token;
+  // aquí solo usamos la sesión para obtener el token.
+  const s = useSession();
+
+  // API client usando tu lib/api.ts
+  const api = makeApi({
+    apiBase: API_BASE,
+    token: s.token,
+    onAuthError: () => {
+      // Si el token expira o no es válido, lo ideal es que el guard te saque a /login;
+      // aquí no redirigimos para no duplicar lógica.
+      // Puedes limpiar storage o disparar un toast si lo prefieres.
+      // clearSession(); window.location.replace("/login");
+    },
+  });
 
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -24,30 +52,37 @@ export default function CPanelAdminDashboard() {
   const [loadingFinalize, setLoadingFinalize] = useState(false);
   const [previewData, setPreviewData] = useState<any | null>(null);
 
+  /** =================== Efectos =================== */
   useEffect(() => {
     let mounted = true;
 
-    // Health CP
+    // Health
     (async () => {
       try {
-        const r = await api.get("/cp/health", { validateStatus: () => true });
+        const res = await fetch(`${api._base}/cp/health`, {
+          method: "GET",
+          headers: { Accept: "application/json", Authorization: `Bearer ${s.token}` },
+          credentials: "include",
+        });
         if (!mounted) return;
-        setHealthOk(r.status >= 200 && r.status < 300);
+        setHealthOk(res.ok);
       } catch {
         if (!mounted) return;
         setHealthOk(false);
       }
     })();
 
-    // Businesses (descubrimiento)
+    // Businesses (descubrimiento con fallback)
     (async () => {
       setLoadingBiz(true);
       setErr(null);
       try {
-        const items = await listCpBusinesses();
+        const items = await listCpBusinesses(api);
         if (!mounted) return;
         setBizList(items);
-        if (items.length && !bizId) setBizId(String(items[0]?.id));
+        if (items.length && !bizId) {
+          setBizId(String(items[0]?.id));
+        }
       } catch (e: any) {
         if (!mounted) return;
         setErr(e?.message || "No se pudieron cargar los negocios.");
@@ -56,10 +91,13 @@ export default function CPanelAdminDashboard() {
       }
     })();
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** =================== Acciones =================== */
   const canActions = useMemo(() => !!bizId && !!period, [bizId, period]);
 
   async function onPreview() {
@@ -68,12 +106,8 @@ export default function CPanelAdminDashboard() {
     setErr(null);
     setPreviewData(null);
     try {
-      const r = await api.get("/cp/billing/preview", {
-        params: { businessId: bizId, period },
-        validateStatus: () => true,
-      });
-      if (r.status >= 200 && r.status < 300) setPreviewData(r.data);
-      else throw new Error(r.data?.message || `Preview falló (HTTP ${r.status})`);
+      const data = await api.getJson<any>("/cp/billing/preview?"+ new URLSearchParams({ businessId: bizId, period }).toString());
+      setPreviewData(data);
     } catch (e: any) {
       setErr(e?.message || "No se pudo obtener el preview.");
     } finally {
@@ -86,9 +120,8 @@ export default function CPanelAdminDashboard() {
     setLoadingFinalize(true);
     setErr(null);
     try {
-      const r = await api.post("/cp/billing/finalize", { businessId: bizId, period }, { validateStatus: () => true });
-      if (r.status >= 200 && r.status < 300) setPreviewData(r.data);
-      else throw new Error(r.data?.message || `Finalize falló (HTTP ${r.status})`);
+      const data = await api.postJson<any>("/cp/billing/finalize", { businessId: bizId, period });
+      setPreviewData(data);
     } catch (e: any) {
       setErr(e?.message || "No se pudo finalizar el periodo.");
     } finally {
@@ -96,6 +129,7 @@ export default function CPanelAdminDashboard() {
     }
   }
 
+  /** =================== UI =================== */
   const healthBadge =
     healthOk == null ? (
       <span className="badge badge-ghost">Health: …</span>
@@ -152,16 +186,25 @@ export default function CPanelAdminDashboard() {
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button className="btn btn-neutral" disabled={!canActions || loadingPreview} onClick={onPreview}>
+            <button
+              className="btn btn-neutral"
+              disabled={!canActions || loadingPreview}
+              onClick={onPreview}
+            >
               {loadingPreview ? "Cargando…" : "Preview"}
             </button>
-            <button className="btn" disabled={!canActions || loadingFinalize} onClick={onFinalize}>
+            <button
+              className="btn"
+              disabled={!canActions || loadingFinalize}
+              onClick={onFinalize}
+            >
               {loadingFinalize ? "Finalizando…" : "Finalize"}
             </button>
           </div>
         </div>
       </div>
 
+      {/* Resultado */}
       {previewData && (
         <div className="card bg-base-100 shadow-sm mt-4">
           <div className="card-body">
