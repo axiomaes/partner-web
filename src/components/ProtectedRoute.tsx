@@ -1,18 +1,22 @@
 // src/components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
-import { useSession } from "@/shared/auth";
+import { useSession, hasRole, type UserRole } from "@/shared/auth";
 
 type Props = {
-  roles?: Array<"ADMIN" | "BARBER" | "OWNER" | "SUPERADMIN">;
-  children: React.ReactNode;
+  /** Roles permitidos para acceder a la ruta */
+  roles: UserRole[];
+  /** Ruta a la que redirigir si tiene sesión pero no permiso */
+  to?: string;
+  /** Contenido protegido */
+  children: JSX.Element;
 };
 
-export default function ProtectedRoute({ roles, children }: Props) {
-  const { token, role, ready } = useSession();
+export default function ProtectedRoute({ roles, to = "/unauthorized", children }: Props) {
+  const s = useSession();
   const loc = useLocation();
 
-  // Bloqueo inicial para evitar falsas redirecciones
-  if (!ready) {
+  // Espera a que la sesión esté hidratada para evitar parpadeos/redirecciones falsas
+  if (!s.ready) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
         <span className="loading loading-spinner" />
@@ -20,19 +24,16 @@ export default function ProtectedRoute({ roles, children }: Props) {
     );
   }
 
-  if (!token) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: loc.pathname + loc.search }}
-      />
-    );
+  // Sin sesión -> login (guard universal)
+  if (!s.token) {
+    return <Navigate to="/login" replace state={{ from: loc.pathname + loc.search }} />;
   }
 
-  if (roles && role && !roles.includes(role)) {
-    return <Navigate to="/unauthorized" replace />;
+  // Con sesión pero sin rol permitido -> to (por defecto /unauthorized)
+  if (!hasRole(s, roles)) {
+    return <Navigate to={to} replace />;
   }
 
-  return <>{children}</>;
+  // Acceso concedido
+  return children;
 }
