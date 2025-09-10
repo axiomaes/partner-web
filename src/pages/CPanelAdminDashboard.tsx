@@ -1,366 +1,172 @@
 // partner-web/src/pages/CPanelAdminDashboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "@/shared/api";
+import { api, listCpBusinesses, type CpBusiness } from "@/shared/api";
 import { useSession } from "@/shared/auth";
 
-type Biz = {
-  id: string;
-  name: string;
-};
-
-type BillingKind = "LEASE" | "MSG_MARKETING" | "MSG_UTILITY";
-type BillingStatus = "DRAFT" | "FINALIZED";
-
-type BillingItem = {
-  id?: string;
-  businessId: string;
-  period: string;
-  kind: BillingKind;
-  status: BillingStatus;
-  quantity: number;
-  unitAmountCents: number;
-  totalAmountCents: number;
-  meta?: Record<string, unknown>;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-type PreviewResp = {
-  ok: true;
-  business: { id: string; name: string };
-  period: string;
-  range: { from: string; to: string };
-  items: BillingItem[];
-  subtotalCents: number;
-};
-
-type FeedResp = {
-  ok: true;
-  period: string;
-  items: BillingItem[];
-  totalFinalized: number;
-};
-
-function fmtMoneyCents(n: number) {
-  const v = (n ?? 0) / 100;
-  return v.toLocaleString(undefined, { style: "currency", currency: "EUR" });
-}
-
-function thisMonthUTC(): string {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + 1;
-  return `${y}-${m < 10 ? "0" + m : m}`;
+function fmtYYYYMM(d: Date) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
 
 export default function CPanelAdminDashboard() {
-  const nav = useNavigate();
-  const { role, ready } = useSession();
+  useSession(); // asegura hidratación; el guard ya valida SUPERADMIN
 
-  // Seguridad extra (el ProtectedRoute ya lo filtra).
-  // Importante: esperar a `ready` para evitar falsos negativos de rol.
+  const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [bizList, setBizList] = useState<CpBusiness[]>([]);
+  const [bizId, setBizId] = useState<string>("");
+
+  const [period, setPeriod] = useState<string>(fmtYYYYMM(new Date()));
+  const [loadingBiz, setLoadingBiz] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingFinalize, setLoadingFinalize] = useState(false);
+  const [previewData, setPreviewData] = useState<any | null>(null);
+
   useEffect(() => {
-    if (!ready) return;
-    if (role !== "SUPERADMIN") {
-      nav("/unauthorized", { replace: true });
-    }
-  }, [ready, role, nav]);
+    let mounted = true;
 
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string>("");
-  const [okMsg, setOkMsg] = useState<string>("");
-
-  const [health, setHealth] = useState<string>("checking…");
-
-  const [bizList, setBizList] = useState<Biz[]>([]);
-  const [businessId, setBusinessId] = useState<string>("");
-  const [period, setPeriod] = useState<string>(thisMonthUTC());
-
-  const [preview, setPreview] = useState<PreviewResp | null>(null);
-  const [feed, setFeed] = useState<FeedResp | null>(null);
-
-  // Carga inicial: health + businesses
-  useEffect(() => {
-    let alive = true;
+    // Health CP
     (async () => {
       try {
-        const h = await api.get("/cp/health");
-        if (!alive) return;
-        setHealth(h?.data?.ok ? "OK" : "NO OK");
+        const r = await api.get("/cp/health", { validateStatus: () => true });
+        if (!mounted) return;
+        setHealthOk(r.status >= 200 && r.status < 300);
       } catch {
-        if (alive) setHealth("DOWN");
-      }
-
-      try {
-        // Listado de negocios CPANEL
-        // Endpoint esperado del backend: GET /cp/admin/businesses  → { ok, rows: Biz[] }
-        const resp = await api.get("/cp/admin/businesses");
-        const rows: Biz[] = resp?.data?.rows ?? [];
-        if (!alive) return;
-        setBizList(rows);
-        // Selección automática del primero si no hay uno preseleccionado
-        if (rows.length && !businessId) setBusinessId(rows[0].id);
-      } catch (e: any) {
-        if (!alive) return;
-        setErr(e?.response?.data?.message || "No se pudo cargar el listado de negocios.");
+        if (!mounted) return;
+        setHealthOk(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+
+    // Businesses (descubrimiento)
+    (async () => {
+      setLoadingBiz(true);
+      setErr(null);
+      try {
+        const items = await listCpBusinesses();
+        if (!mounted) return;
+        setBizList(items);
+        if (items.length && !bizId) setBizId(String(items[0]?.id));
+      } catch (e: any) {
+        if (!mounted) return;
+        setErr(e?.message || "No se pudieron cargar los negocios.");
+      } finally {
+        if (mounted) setLoadingBiz(false);
+      }
+    })();
+
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo una vez
+  }, []);
 
-  const selectedBiz = useMemo(
-    () => bizList.find((b) => b.id === businessId) || null,
-    [bizList, businessId]
-  );
+  const canActions = useMemo(() => !!bizId && !!period, [bizId, period]);
 
-  async function doPreview() {
-    if (!businessId || !period) return;
-    setErr("");
-    setOkMsg("");
-    setLoading(true);
-    setFeed(null);
+  async function onPreview() {
+    if (!canActions) return;
+    setLoadingPreview(true);
+    setErr(null);
+    setPreviewData(null);
     try {
-      const r = await api.get<PreviewResp>("/cp/billing/preview", {
-        params: { businessId, period },
+      const r = await api.get("/cp/billing/preview", {
+        params: { businessId: bizId, period },
+        validateStatus: () => true,
       });
-      setPreview(r.data);
+      if (r.status >= 200 && r.status < 300) setPreviewData(r.data);
+      else throw new Error(r.data?.message || `Preview falló (HTTP ${r.status})`);
     } catch (e: any) {
-      setPreview(null);
-      setErr(e?.response?.data?.message || e?.message || "Error en preview.");
+      setErr(e?.message || "No se pudo obtener el preview.");
     } finally {
-      setLoading(false);
+      setLoadingPreview(false);
     }
   }
 
-  async function doFinalize() {
-    if (!businessId || !period) return;
-    setErr("");
-    setOkMsg("");
-    setLoading(true);
+  async function onFinalize() {
+    if (!canActions) return;
+    setLoadingFinalize(true);
+    setErr(null);
     try {
-      await api.post("/cp/billing/finalize", { businessId, period });
-      const r = await api.get<FeedResp>("/cp/billing/feed", {
-        params: { businessId, period },
-      });
-      setFeed(r.data);
-      setOkMsg("Periodo finalizado correctamente.");
+      const r = await api.post("/cp/billing/finalize", { businessId: bizId, period }, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) setPreviewData(r.data);
+      else throw new Error(r.data?.message || `Finalize falló (HTTP ${r.status})`);
     } catch (e: any) {
-      setFeed(null);
-      setErr(e?.response?.data?.message || e?.message || "Error al finalizar.");
+      setErr(e?.message || "No se pudo finalizar el periodo.");
     } finally {
-      setLoading(false);
+      setLoadingFinalize(false);
     }
   }
 
-  function onChangeBiz(e: React.ChangeEvent<HTMLSelectElement>) {
-    setBusinessId(e.target.value);
-  }
-
-  function onChangePeriod(e: React.ChangeEvent<HTMLInputElement>) {
-    // Input type="month" devuelve YYYY-MM
-    setPeriod(e.target.value);
-  }
-
-  const subtotalPreview = useMemo(
-    () => (preview?.items ?? []).reduce((s, it) => s + (it.totalAmountCents ?? 0), 0),
-    [preview]
-  );
-
-  // UX: mientras la sesión no esté lista, muestra un spinner (evita parpadeos)
-  if (!ready) {
-    return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <span className="loading loading-spinner" />
-      </div>
+  const healthBadge =
+    healthOk == null ? (
+      <span className="badge badge-ghost">Health: …</span>
+    ) : healthOk ? (
+      <span className="badge badge-success">Health: OK</span>
+    ) : (
+      <span className="badge badge-error">Health: FAIL</span>
     );
-  }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="container-app">
+      <div className="flex items-center justify-between py-2">
         <h1 className="text-2xl font-semibold">CPanel · Billing</h1>
-        <span
-          className={`badge ${health === "OK" ? "badge-success" : "badge-error"}`}
-          title="Estado /cp/health"
-        >
-          Health: {health}
-        </span>
+        {healthBadge}
       </div>
 
       {err && (
-        <div className="alert alert-warning">
+        <div className="alert alert-warning my-3">
           <span>{err}</span>
         </div>
       )}
-      {okMsg && (
-        <div className="alert alert-success">
-          <span>{okMsg}</span>
-        </div>
-      )}
 
-      {/* Filtros */}
       <div className="card bg-base-100 shadow-sm">
-        <div className="card-body grid sm:grid-cols-3 gap-3">
-          <div>
-            <label className="label">
+        <div className="card-body">
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Negocio */}
+            <label className="form-control">
               <span className="label-text">Negocio</span>
+              <select
+                className="select select-bordered"
+                disabled={loadingBiz || !bizList.length}
+                value={bizId}
+                onChange={(e) => setBizId(e.target.value)}
+              >
+                {!bizList.length && <option value="">(sin datos)</option>}
+                {bizList.map((b) => (
+                  <option key={String(b.id)} value={String(b.id)}>
+                    {b.displayName || b.name || b.id}
+                  </option>
+                ))}
+              </select>
             </label>
-            <select
-              value={businessId}
-              onChange={onChangeBiz}
-              className="select select-bordered w-full"
-            >
-              {!businessId && <option value="">Selecciona un negocio…</option>}
-              {bizList.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} · {b.id}
-                </option>
-              ))}
-            </select>
-          </div>
 
-          <div>
-            <label className="label">
+            {/* Periodo */}
+            <label className="form-control">
               <span className="label-text">Periodo (YYYY-MM)</span>
+              <input
+                type="month"
+                className="input input-bordered"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+              />
             </label>
-            <input
-              type="month"
-              value={period}
-              onChange={onChangePeriod}
-              className="input input-bordered w-full"
-            />
           </div>
 
-          <div className="flex items-end gap-2">
-            <button
-              className={`btn btn-primary ${loading ? "loading" : ""}`}
-              onClick={doPreview}
-              disabled={loading || !businessId || !period}
-            >
-              {loading ? "" : "Preview"}
+          <div className="flex gap-2 pt-2">
+            <button className="btn btn-neutral" disabled={!canActions || loadingPreview} onClick={onPreview}>
+              {loadingPreview ? "Cargando…" : "Preview"}
             </button>
-            <button
-              className={`btn btn-outline ${loading ? "loading" : ""}`}
-              onClick={doFinalize}
-              disabled={loading || !businessId || !period}
-              title="Persiste y marca como FINALIZED"
-            >
-              {loading ? "" : "Finalize"}
+            <button className="btn" disabled={!canActions || loadingFinalize} onClick={onFinalize}>
+              {loadingFinalize ? "Finalizando…" : "Finalize"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Preview */}
-      {preview && (
-        <div className="card bg-base-100 shadow-sm">
+      {previewData && (
+        <div className="card bg-base-100 shadow-sm mt-4">
           <div className="card-body">
-            <div className="flex items-center justify-between">
-              <h2 className="card-title">Preview — {selectedBiz?.name}</h2>
-              <div className="text-sm opacity-70">Periodo: {preview.period}</div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="table table-compact">
-                <thead>
-                  <tr>
-                    <th>Kind</th>
-                    <th className="text-right">Qty</th>
-                    <th className="text-right">Unit</th>
-                    <th className="text-right">Total</th>
-                    <th>Meta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.items.map((it, idx) => (
-                    <tr key={idx}>
-                      <td>{it.kind}</td>
-                      <td className="text-right">{it.quantity}</td>
-                      <td className="text-right">{fmtMoneyCents(it.unitAmountCents)}</td>
-                      <td className="text-right font-medium">
-                        {fmtMoneyCents(it.totalAmountCents)}
-                      </td>
-                      <td className="text-xs opacity-70">
-                        {it.meta ? JSON.stringify(it.meta) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th colSpan={3} className="text-right">
-                      Subtotal
-                    </th>
-                    <th className="text-right">{fmtMoneyCents(subtotalPreview)}</th>
-                    <th />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Feed (tras finalize) */}
-      {feed && (
-        <div className="card bg-base-100 shadow-sm">
-          <div className="card-body">
-            <div className="flex items-center justify-between">
-              <h2 className="card-title">Finalizado — {selectedBiz?.name}</h2>
-              <div className="text-sm opacity-70">Periodo: {feed.period}</div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="table table-compact">
-                <thead>
-                  <tr>
-                    <th>Kind</th>
-                    <th>Status</th>
-                    <th className="text-right">Qty</th>
-                    <th className="text-right">Unit</th>
-                    <th className="text-right">Total</th>
-                    <th>Meta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {feed.items.map((it) => (
-                    <tr key={`${it.kind}-${it.period}`}>
-                      <td>{it.kind}</td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            it.status === "FINALIZED" ? "badge-success" : "badge-ghost"
-                          }`}
-                        >
-                          {it.status}
-                        </span>
-                      </td>
-                      <td className="text-right">{it.quantity}</td>
-                      <td className="text-right">{fmtMoneyCents(it.unitAmountCents)}</td>
-                      <td className="text-right font-medium">
-                        {fmtMoneyCents(it.totalAmountCents)}
-                      </td>
-                      <td className="text-xs opacity-70">
-                        {it.meta ? JSON.stringify(it.meta) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th colSpan={4} className="text-right">
-                      Total FINALIZED
-                    </th>
-                    <th className="text-right">{fmtMoneyCents(feed.totalFinalized)}</th>
-                    <th />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            <h2 className="card-title">Resultado</h2>
+            <pre className="text-xs overflow-x-auto">{JSON.stringify(previewData, null, 2)}</pre>
           </div>
         </div>
       )}
