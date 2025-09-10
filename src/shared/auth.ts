@@ -33,7 +33,8 @@ export function loadSession(): Session | null {
         ? (role as UserRole)
         : "BARBER") as UserRole,
       token,
-      ready: !!s.ready,
+      // Importante: la sesión sólo se marca lista si es válida
+      ready: true,
       name: s.name ? String(s.name) : undefined,
       businessId:
         s.businessId === undefined || s.businessId === null
@@ -48,11 +49,12 @@ export function loadSession(): Session | null {
 }
 
 export function saveSession(s: Session) {
+  // Forzamos ready=true al persistir una sesión válida tras login
   localStorage.setItem(KEY, JSON.stringify({
     email: s.email,
     role: s.role,
     token: s.token,
-    ready: !!s.ready,
+    ready: true,
     name: s.name,
     businessId: s.businessId ?? null,
   }));
@@ -65,14 +67,19 @@ export function clearSession() {
 /* Hook */
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
-  useEffect(() => { setSession(loadSession()); }, []);
+
+  useEffect(() => {
+    setSession(loadSession());
+  }, []);
+
+  // Hasta que cargue desde localStorage, devolvemos ready:false para no redirigir
   return useMemo(
     () =>
       session ?? {
         email: "",
         role: "BARBER",
         token: "",
-        ready: true,
+        ready: false, // ← clave para evitar el “flash”
       },
     [session]
   );
@@ -89,16 +96,13 @@ function normRoleMaybe(r: unknown): UserRole | null {
 }
 
 function resolveRole(subject: Pick<Session,"role"> | UserRole | string): UserRole {
-  // si es objeto con role
   if (subject && typeof subject === "object" && "role" in subject) {
     const role = (subject as any).role;
     return normRoleMaybe(role) ?? "BARBER";
   }
-  // si es string/crudo
   return normRoleMaybe(String(subject)) ?? "BARBER";
 }
 
-/** Devuelve true si el sujeto (objeto o string) está en alguno de los roles dados */
 export function hasRole(
   subject: Pick<Session,"role"> | UserRole | string,
   roles: UserRole[]
@@ -111,7 +115,6 @@ export function isSuperAdmin(subject: Pick<Session,"role"> | UserRole | string):
   return resolveRole(subject) === "SUPERADMIN";
 }
 
-/* Helpers de compatibilidad (hay imports antiguos en el código) */
 export function isAdmin(subject: Pick<Session,"role"> | UserRole | string): boolean {
   const r = resolveRole(subject);
   return r === "ADMIN" || r === "OWNER" || r === "SUPERADMIN";
