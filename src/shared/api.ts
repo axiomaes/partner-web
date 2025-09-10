@@ -1,8 +1,17 @@
 // partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
+import { saveSession } from "./auth"; // ← asegúrate de tenerlo exportado
 
 /** ===== Tipos compartidos ===== */
 export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
+export type SessionLike = {
+  email: string;
+  role: UserRole;
+  token: string;
+  ready: boolean;
+  name?: string;
+  businessId?: string | null;
+};
 
 /** ================= Base URL ================== */
 const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
@@ -10,14 +19,12 @@ const PROD_API = "https://axioma-api.stacks.axioma-creativa.es";
 function computeBaseURL(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
   if (viteEnv && typeof viteEnv === "string" && viteEnv.trim() !== "") return viteEnv;
-
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host.endsWith(".axioma-creativa.es")) return PROD_API;
   }
   return "http://localhost:3000";
 }
-
 export const baseURL = computeBaseURL();
 
 /** ============= Helpers de auth (solo storage) ============= */
@@ -34,29 +41,53 @@ function getTokenFromStorage(): string | null {
     return null;
   }
 }
-
-// 👇 añadido para poder limpiar sesión del panel en 401/403 fuera de /cp/
 function clearPanelSession() {
-  try {
-    localStorage.removeItem(PANEL_STORAGE_KEY);
-  } catch {}
+  try { localStorage.removeItem(PANEL_STORAGE_KEY); } catch {}
 }
 
 export type PortalSession = { token: string; customerId?: string; businessId?: string };
-
 export function loadPortalSession(): PortalSession | null {
-  try {
-    const raw = localStorage.getItem(PORTAL_KEY);
-    return raw ? (JSON.parse(raw) as PortalSession) : null;
-  } catch {
-    return null;
-  }
+  try { const raw = localStorage.getItem(PORTAL_KEY); return raw ? (JSON.parse(raw) as PortalSession) : null; }
+  catch { return null; }
 }
 export function savePortalSession(s: PortalSession) {
   localStorage.setItem(PORTAL_KEY, JSON.stringify(s));
 }
-export function clearPortalSession() {
-  localStorage.removeItem(PORTAL_KEY);
+export function clearPortalSession() { localStorage.removeItem(PORTAL_KEY); }
+
+/** ============= JWT helpers (ligeros) ============= */
+function parseJwt<T = any>(token: string): T | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decodeURIComponent(escape(json))) as T;
+  } catch { return null; }
+}
+function isExpired(token: string): boolean {
+  const p = parseJwt<{ exp?: number }>(token);
+  if (!p?.exp) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return p.exp <= now;
+}
+function roleFromToken(token: string): UserRole | null {
+  const p = parseJwt<{ role?: string }>(token);
+  const r = String(p?.role || "").toUpperCase();
+  return (["SUPERADMIN","OWNER","ADMIN","BARBER"] as const).includes(r as UserRole) ? (r as UserRole) : null;
+}
+function businessFromToken(token: string): string | null {
+  const p = parseJwt<{ businessId?: string }>(token);
+  return p?.businessId ? String(p.businessId) : null;
+}
+
+/** ============= Rutas post-login por rol ============= */
+export function postLoginPathByRole(role: UserRole): string {
+  switch (role) {
+    case "SUPERADMIN": return "/cpanel";
+    case "OWNER":
+    case "ADMIN":      return "/app/admin";
+    case "BARBER":     return "/staff/checkin"; // o "/app"
+  }
 }
 
 /** ============= Axios panel (staff/admin) ============= */
@@ -68,39 +99,36 @@ export const api: AxiosInstance = axios.create({
 
 // Adjunta siempre Authorization desde localStorage 'axioma.session'
 api.interceptors.request.use((config) => {
+  // Evita meter Authorization en /auth/login
+  const url = String(config.url || "");
+  const path = new URL(url, baseURL).pathname;
   const headers = AxiosHeaders.from(config.headers || {});
-  const token = getTokenFromStorage();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (path !== "/auth/login") {
+    const token = getTokenFromStorage();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
   config.headers = headers;
   return config;
 });
 
-// 👇 Interceptor de respuesta: NO redirijas en 401/403 si es endpoint del CPANEL (/cp/*)
+// Interceptor de respuesta: NO redirijas en 401/403 si es /cp/* ni si es /auth/login ni si es OPTIONS
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err?.response?.status as number | undefined;
+    const method = String(err?.config?.method || "GET").toUpperCase();
     const cfgUrl = String(err?.config?.url || "");
-    // config.url puede venir relativa; con baseURL construimos pathname para comparar
     let path = cfgUrl;
-    try {
-      const u = new URL(cfgUrl, baseURL);
-      path = u.pathname; // e.g. /cp/health
-    } catch {
-      // si falla URL, usamos la cadena tal cual
-    }
-
+    try { path = new URL(cfgUrl, baseURL).pathname; } catch {}
     const isCpanel = path.startsWith("/cp/");
+    const isAuthLogin = path === "/auth/login";
 
-    if ((status === 401 || status === 403) && !isCpanel) {
-      // Para el resto de la app, limpiamos sesión y enviamos al login
+    if ((status === 401 || status === 403) && !isCpanel && !isAuthLogin && method !== "OPTIONS") {
       clearPanelSession();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.replace("/login");
       }
     }
-
-    // Importante: dejar que el componente maneje el error (CPanel pinta su <alert/>)
     return Promise.reject(err);
   }
 );
@@ -111,7 +139,6 @@ export const portalApi: AxiosInstance = axios.create({
   timeout: 15000,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
-
 portalApi.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers || {});
   const p = loadPortalSession();
@@ -119,6 +146,37 @@ portalApi.interceptors.request.use((config) => {
   config.headers = headers;
   return config;
 });
+
+/** ============= Login staff centralizado ============= */
+export async function authLogin(email: string, password: string) {
+  const r = await api.post("/auth/login", { email, password }, { validateStatus: () => true });
+  if (r.status < 200 || r.status >= 300) {
+    const msg = r.data?.message || r.data?.error || "No autorizado";
+    throw new Error(msg);
+  }
+  const token: string = r.data?.access_token || r.data?.token;
+  if (!token) throw new Error("Token ausente en la respuesta");
+
+  // Expiración: si ya está vencido, forzar error
+  if (isExpired(token)) throw new Error("Sesión caducada. Inicia sesión de nuevo.");
+
+  // Preferimos role del backend; si no viene, inferimos del JWT
+  const role = (r.data?.role as UserRole) || roleFromToken(token) || "BARBER";
+  const businessId = r.data?.businessId ?? businessFromToken(token) ?? null;
+
+  const session: SessionLike = {
+    email: r.data?.email || email,
+    role,
+    token,
+    ready: true,
+    name: r.data?.name,
+    businessId,
+  };
+  saveSession(session as any);
+
+  const next = postLoginPathByRole(role);
+  return { session, next };
+}
 
 /** ============= Tipos/Helpers panel ============= */
 export type UserLite = { id: string; email: string; role: UserRole };
@@ -161,26 +219,19 @@ export const createCustomer = (name: string, phone: string) =>
 export async function getCustomer(id: string): Promise<CustomerLite | null> {
   try {
     const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
-    if (r.status >= 200 && r.status < 300 && r.data) {
-      return r.data as CustomerLite;
-    }
-  } catch {
-    // fallback
-  }
+    if (r.status >= 200 && r.status < 300 && r.data) return r.data as CustomerLite;
+  } catch {}
   try {
     const all = await listCustomers();
     const hit = (all as any[]).find((c) => c.id === id) ?? null;
     return hit as CustomerLite | null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 /** Eliminar cliente (devuelve error claro en 403) */
 export async function deleteCustomer(id: string): Promise<void> {
   const r = await api.delete(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return;
-
   const err: any = new Error(
     r.status === 403
       ? "No tienes permiso para eliminar este cliente (se requiere ADMIN u OWNER)."
@@ -231,28 +282,21 @@ export async function verifyCustomerOtp(body: { phone?: string; email?: string; 
 
 export async function getMyVisits() {
   const r = await portalApi.get("/portal/me/visits", { validateStatus: () => true });
-  if (r.status >= 200 && r.status < 300) return r.data as any[];
-  return [];
+  return r.status >= 200 && r.status < 300 ? (r.data as any[]) : [];
 }
 export async function getMyRewards() {
   const r = await portalApi.get("/portal/me/rewards", { validateStatus: () => true });
-  if (r.status >= 200 && r.status < 300) return r.data as any[];
-  return [];
+  return r.status >= 200 && r.status < 300 ? (r.data as any[]) : [];
 }
 
 /** Lee el payload del QR y registra una visita */
 export function addVisitFromQrPayload(payload: string) {
   let parsed: any;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    throw new Error("QR inválido: no es JSON.");
-  }
-
+  try { parsed = JSON.parse(payload); }
+  catch { throw new Error("QR inválido: no es JSON."); }
   if (!parsed || parsed.t !== "axioma-visit" || typeof parsed.customerId !== "string") {
     throw new Error("QR inválido: formato no reconocido.");
   }
-
   const notes = typeof parsed.notes === "string" ? parsed.notes : "Visita por QR";
   return addVisit(parsed.customerId, notes);
 }
@@ -269,7 +313,6 @@ export async function lookupCustomer(input: LookupInput): Promise<CustomerLite |
     const r = await api.post("/customers/lookup", body, { validateStatus: () => true });
     if (r.status >= 200 && r.status < 300 && r.data && r.data.id) return r.data as CustomerLite;
   } catch {}
-
   try {
     const list = await listCustomers();
     const phoneNorm = (body.phone || "").replace(/\D/g, "");
@@ -279,10 +322,8 @@ export async function lookupCustomer(input: LookupInput): Promise<CustomerLite |
       const cEmail = String(c.email || "").toLowerCase();
       return (phoneNorm && cPhone.endsWith(phoneNorm)) || (emailNorm && cEmail === emailNorm);
     });
-    return found || null;
-  } catch {
-    return null;
-  }
+    return (found as CustomerLite) || null;
+  } catch { return null; }
 }
 
 export function addVisitByPhone(phone: string, notes?: string) {
