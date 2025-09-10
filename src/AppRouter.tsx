@@ -2,31 +2,33 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
-import { postLoginPath } from "./shared/redirects";
 
-/* Páginas */
+/* ==== Páginas ==== */
+import Home from "./pages/Home";
 import LoginStaff from "./pages/LoginStaff";
 import Unauthorized from "./pages/Unauthorized";
 
-/* Portal clientes (si los usas aparte) */
+/* Portal clientes */
 import CustomerOTP from "./pages/CustomerOTP";
-import PortalPoints from "./pages/PortalPoints";
+import PortalPoints from "./portal/PortalPoints"; // ← ruta correcta
 
-/* Staff + Panel negocio */
+/* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import AdminPanel from "./pages/AdminPanel";
-import CustomersPage from "./pages/CustomersPage";
-import CustomerDetail from "./pages/CustomerDetail";
+import Dashboard from "./pages/Dashboard";
 import CustomersNew from "./pages/CustomersNew";
-import AdminUsers from "./pages/AdminUsers";
+import CustomerDetail from "./pages/CustomerDetail";
+// import CustomersPage from "./pages/CustomersPage"; // ← NO existe, la quitamos
 
-/* CPanel (superadmin) */
+/* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
 function AlreadyLoggedRedirect() {
   const s = useSession();
   if (!s.ready) return null;
-  if (s.token) return <Navigate to={postLoginPath(s)} replace />;
+  if (s.token) {
+    // SUPERADMIN -> /cpanel ; resto -> /app
+    return <Navigate to={isSuperAdmin(s) ? "/cpanel" : "/app"} replace />;
+  }
   return null;
 }
 
@@ -36,22 +38,25 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Primera pantalla = Login */}
+        {/* Primera pantalla = Home (redirige según sesión/rol) */}
         <Route
           path="/"
           element={
             <>
               <AlreadyLoggedRedirect />
-              <LoginStaff />
+              <Home />
             </>
           }
         />
 
-        {/* Portal clientes (opcionales) */}
+        {/* Login staff */}
+        <Route path="/login" element={<LoginStaff />} />
+
+        {/* Portal clientes */}
         <Route path="/portal" element={<CustomerOTP />} />
         <Route path="/portal/points" element={<PortalPoints />} />
 
-        {/* Staff (requiere sesión) */}
+        {/* Staff check-in */}
         <Route
           path="/staff/checkin"
           element={
@@ -63,34 +68,40 @@ export default function AppRouter() {
 
         {/* Panel negocio */}
         <Route
-          path="/app/*"
+          path="/app"
           element={
             <RouteGuard>
-              <Routes>
-                <Route
-                  index
-                  element={
-                    isAdmin(s) ? (
-                      <Navigate to="admin" replace />
-                    ) : (
-                      // Si no es ADMIN/OWNER/SUPERADMIN, deja al BARBER donde elijas
-                      <Navigate to="/staff/checkin" replace />
-                    )
-                  }
-                />
-                <Route path="admin" element={<AdminPanel />} />
-                <Route path="customers" element={<CustomersPage />} />
-                <Route path="customers/new" element={<CustomersNew />} />
-                <Route path="customers/:id" element={<CustomerDetail />} />
-                <Route path="users" element={<AdminUsers />} />
-              </Routes>
+              {/* Si es ADMIN/OWNER entra al dashboard; si es BARBER puedes redirigir a check-in */}
+              {isAdmin(s) ? (
+                <Dashboard />
+              ) : (
+                <Navigate to="/staff/checkin" replace />
+              )}
+            </RouteGuard>
+          }
+        />
+
+        {/* Clientes (usa CustomersNew y Detail que sí existen) */}
+        <Route
+          path="/app/customers/new"
+          element={
+            <RouteGuard>
+              <CustomersNew />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/app/customers/:id"
+          element={
+            <RouteGuard>
+              <CustomerDetail />
             </RouteGuard>
           }
         />
 
         {/* CPanel (solo SUPERADMIN) */}
         <Route
-          path="/cpanel"
+          path="/cpanel/*"
           element={
             <RouteGuard>
               {isSuperAdmin(s) ? (
@@ -103,7 +114,6 @@ export default function AppRouter() {
         />
 
         {/* Secundarias */}
-        <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
