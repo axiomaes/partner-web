@@ -85,13 +85,13 @@ export type GuardInput =
   | undefined;
 
 function normalizeRole(input: GuardInput): UserRole {
-  const raw =
-    typeof input === "string"
-      ? input
-      : input && typeof input === "object"
-      ? // @ts-expect-error — leer role si existe
-        (input.role as string | undefined)
-      : undefined;
+  let raw: unknown;
+
+  if (typeof input === "string") {
+    raw = input;
+  } else if (input && typeof input === "object" && "role" in input) {
+    raw = (input as { role?: string | UserRole }).role;
+  }
 
   const up = String(raw || "").toUpperCase();
   if (up === "SUPERADMIN" || up === "OWNER" || up === "ADMIN" || up === "BARBER") {
