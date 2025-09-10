@@ -1,50 +1,45 @@
-# ---- build (Vite) ----
+# =========================
+# 1) Build (Vite/React)
+# =========================
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Opcional: evita ruidos de npm
-ENV NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false
+ENV NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false
 
-# Copia manifests e instala deps en modo reproducible
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
 
-# Copia el resto del proyecto (src, public, index.html, etc.)
 COPY . .
 
-# Inyecta la base de la API (CapRover → Build-time env)
+# Build args (opcionales)
 ARG VITE_API_BASE
-ENV VITE_API_BASE=${VITE_API_BASE}
+ARG PWA_MODE
+ENV VITE_API_BASE=${VITE_API_BASE} \
+    PWA_MODE=${PWA_MODE}
 
-# Build de producción
 RUN npm run build
 
-# ---- runtime (Nginx) ----
-FROM nginx:1.27-alpine AS runtime
+# =========================
+# 2) Runtime (Nginx)
+# =========================
+FROM nginx:1.27-alpine AS serve
 WORKDIR /usr/share/nginx/html
 
-# Copia configuración SPA y bloquea sw.js
+# Nginx para SPA + bloquear service workers
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copia artefactos compilados
+# Artefactos
 COPY --from=build /app/dist ./
 
-# partner-web/Dockerfile (fragmento del runtime)
-FROM nginx:1.27-alpine AS runtime
-WORKDIR /usr/share/nginx/html
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist ./
-
-# 🧹 Anti-SW defensivo
+# 🔒 Anti-PWA: garantizamos que no queden SW en la imagen
 RUN rm -f /usr/share/nginx/html/sw.js \
          /usr/share/nginx/html/service-worker.js \
-         /usr/share/nginx/html/registerSW.js
+         /usr/share/nginx/html/registerSW.js || true
 
-
-# (Opcional) Healthcheck simple a index.html
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
-  wget -qO- http://localhost/index.html >/dev/null 2>&1 || exit 1
+# Salud y puerto
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost/index.html >/dev/null 2>&1 || exit 1
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
