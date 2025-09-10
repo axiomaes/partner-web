@@ -4,29 +4,37 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { baseURL, type UserRole } from "@/shared/api";
 import { saveSession, clearSession, type Session, useSession } from "@/shared/auth";
 
+/* ===== Helpers JWT (tolerantes) ===== */
 function decodeJwt(token: string): any | null {
   try {
-    const [, payload] = token.split(".");
-    if (!payload) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null; // no parece JWT -> devolvemos null
+    const payload = parts[1];
     const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
     return json || null;
   } catch {
     return null;
   }
 }
-
-function decodeJwtRole(token: string): UserRole | null {
-  const json = decodeJwt(token);
-  if (!json) return null;
-  const role = (json?.role || json?.claims?.role || json?.roles)?.toString?.();
-  if (!role) return null;
-  const norm = role.toUpperCase();
-  return (["SUPERADMIN", "OWNER", "ADMIN", "BARBER"].includes(norm) ? (norm as UserRole) : null);
+const VALID_ROLES = new Set(["SUPERADMIN", "OWNER", "ADMIN", "BARBER"]);
+function normRole(r?: string | null): UserRole | null {
+  if (!r) return null;
+  const up = r.toUpperCase();
+  return VALID_ROLES.has(up) ? (up as UserRole) : null;
 }
-
-function decodeJwtEmail(token: string): string | null {
-  const json = decodeJwt(token);
-  return (json?.email || json?.sub || json?.upn || null) as string | null;
+function jwtRole(token: string): UserRole | null {
+  const j = decodeJwt(token);
+  const raw =
+    j?.role ??
+    j?.claims?.role ??
+    (Array.isArray(j?.roles) ? j.roles[0] : j?.roles) ??
+    null;
+  return normRole(typeof raw === "string" ? raw : null);
+}
+function jwtEmail(token: string): string | null {
+  const j = decodeJwt(token);
+  const e = j?.email || j?.upn || j?.sub || null;
+  return typeof e === "string" ? e : null;
 }
 
 export default function LoginStaff() {
@@ -39,59 +47,88 @@ export default function LoginStaff() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Si ya hay sesión lista, redirige por rol (evita “titileo”)
+  // Si ya hay sesión lista, redirige por rol (evita titileo)
   useEffect(() => {
-    if (!s.ready) return;
-    if (!s.token) return;
+    if (!s.ready || !s.token) return;
     if (s.role === "SUPERADMIN") {
       nav("/cpanel", { replace: true });
     } else {
-      const to = loc.state?.from && typeof loc.state.from === "string" ? loc.state.from : "/app";
+      const to =
+        loc.state?.from && typeof loc.state.from === "string"
+          ? loc.state.from
+          : "/app";
       nav(to, { replace: true });
     }
-  }, [s.ready, s.token, s.role, nav]); // no dependas de loc.state para evitar bucles
+    // NO dependemos de loc.state para evitar re-render loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.ready, s.token, s.role, nav]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
+    if (loading) return;
     setLoading(true);
     try {
+      const body = { email, password: pass };
       const res = await fetch(`${baseURL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || `Error HTTP ${res.status}`);
+        throw new Error(
+          data?.message ||
+            (res.status === 401
+              ? "Credenciales inválidas."
+              : `Error HTTP ${res.status}`)
+        );
       }
 
+      // Token puede venir como JWT o opaco
       const token: string | undefined = data?.access_token || data?.accessToken;
-      if (!token) throw new Error("No se recibió access_token.");
+      if (!token || String(token).trim().length < 8) {
+        throw new Error("No se recibió un access_token válido.");
+      }
 
-      // Derivamos email/role desde respuesta o JWT
-      const emailFromApi: string | undefined = data?.user?.email;
-      const roleFromApi: string | undefined = data?.user?.role;
-      const roleFromJwt = decodeJwtRole(token) ?? (roleFromApi?.toUpperCase?.() as UserRole | null);
+      // Preferimos datos del API; si faltan, intentamos desde el JWT
+      const apiEmail: string | undefined = data?.user?.email;
+      const apiRole: string | undefined = data?.user?.role;
 
-      const finalEmail = emailFromApi || decodeJwtEmail(token) || email;
-      const finalRole: UserRole = (roleFromJwt as UserRole) ?? "BARBER";
+      const decodedEmail = jwtEmail(token);
+      const decodedRole = jwtRole(token);
+
+      const finalEmail =
+        (apiEmail && String(apiEmail)) || decodedEmail || email.trim();
+      const finalRole: UserRole =
+        normRole(apiRole ?? undefined) ??
+        decodedRole ??
+        ("BARBER" as UserRole);
+
+      const name: string | undefined = data?.user?.name || data?.user?.fullName;
+      const businessId: string | null =
+        data?.user?.businessId ?? data?.user?.business_id ?? null;
 
       const session: Session = {
         email: finalEmail,
         role: finalRole,
         token,
-        ready: true,
+        ready: true, // <- clave para evitar loops
+        name,
+        businessId,
       };
 
       saveSession(session);
 
-      // Redirige por rol
+      // Redirección por rol
       if (finalRole === "SUPERADMIN") {
         nav("/cpanel", { replace: true });
       } else {
-        const to = loc.state?.from && typeof loc.state.from === "string" ? loc.state.from : "/app";
+        const to =
+          loc.state?.from && typeof loc.state.from === "string"
+            ? loc.state.from
+            : "/app";
         nav(to, { replace: true });
       }
     } catch (e: any) {
@@ -110,6 +147,7 @@ export default function LoginStaff() {
         <div className="card-body">
           <h2 className="card-title">Acceso Staff</h2>
           {!!err && <div className="alert alert-warning">{err}</div>}
+
           <label className="form-control w-full">
             <span className="label-text">Email</span>
             <input
@@ -120,8 +158,10 @@ export default function LoginStaff() {
               required
               autoFocus
               autoComplete="username"
+              inputMode="email"
             />
           </label>
+
           <label className="form-control w-full">
             <span className="label-text">Contraseña</span>
             <input
@@ -133,6 +173,7 @@ export default function LoginStaff() {
               autoComplete="current-password"
             />
           </label>
+
           <div className="card-actions justify-end mt-2">
             <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={disabled}>
               {loading ? "" : "Entrar"}
