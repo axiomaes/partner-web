@@ -1,144 +1,149 @@
 // partner-web/src/lib/api.ts
+// ⚠️ SHIM de compatibilidad. Fuente de verdad: "@/shared/api".
+// Reexporta tipos y funciones clave y ofrece un "makeApi" ligero compatible.
+
+import {
+  baseURL as SHARED_BASE,
+  api as axiosApi,
+  type CpBusiness,
+  listCpBusinesses as listCpBusinessesShared,
+} from "@/shared/api";
+
+export type { CpBusiness } from "@/shared/api";
 
 export type MakeApiOptions = {
-  apiBase: string;
-  token: string;                       // puede ser "Bearer ..." o solo el JWT
-  onAuthError?: () => void;            // se llamará en 401/403
-  headers?: Record<string, string>;    // cabeceras extra por defecto
+  apiBase?: string;
+  token?: string;                    // opcional; si no se pasa, usará axiosApi con su interceptor
+  onAuthError?: () => void;
+  headers?: Record<string, string>;
 };
 
 export type ApiClient = {
-  /** GET JSON */
   getJson: <T = any>(path: string, init?: RequestInit) => Promise<T>;
-  /** GET como texto plano */
   getText: (path: string, init?: RequestInit) => Promise<string>;
-  /** POST JSON (body se serializa a JSON, parsea JSON de respuesta) */
   postJson: <T = any>(path: string, body: any, init?: RequestInit) => Promise<T>;
-  /** PUT JSON */
   putJson:  <T = any>(path: string, body: any, init?: RequestInit) => Promise<T>;
-  /** PATCH JSON */
   patchJson:<T = any>(path: string, body: any, init?: RequestInit) => Promise<T>;
-  /** DELETE (devuelve Response por si no hay cuerpo) */
   del: (path: string, init?: RequestInit) => Promise<Response>;
-  /** Descargar CSV/archivo como blob y forzar descarga */
   downloadCsv: (path: string, filename: string) => Promise<void>;
-  /** Exponer base para utilidades */
   _base: string;
 };
 
-/** ========= Firma retrocompatible =========
- * - Versión antigua: makeApi(apiBase, token)
- * - Versión nueva:   makeApi({ apiBase, token, onAuthError?, headers? })
- */
-export function makeApi(apiBase: string, token: string): ApiClient;
-export function makeApi(opts: MakeApiOptions): ApiClient;
-export function makeApi(apiBaseOrOpts: string | MakeApiOptions, tokenMaybe?: string): ApiClient {
-  const isOpts = typeof apiBaseOrOpts === "object";
-  const apiBase = (isOpts ? (apiBaseOrOpts as MakeApiOptions).apiBase : (apiBaseOrOpts as string)).replace(/\/+$/, "");
-  const token = (isOpts ? (apiBaseOrOpts as MakeApiOptions).token : (tokenMaybe as string)) || "";
-  const onAuthError = (isOpts ? (apiBaseOrOpts as MakeApiOptions).onAuthError : undefined) || undefined;
-  const extraHeaders = (isOpts ? (apiBaseOrOpts as MakeApiOptions).headers : undefined) || undefined;
+/** makeApi: si pasas token, usa fetch; si no, usa axiosApi (con interceptor de shared). */
+export function makeApi(opts: MakeApiOptions = {}): ApiClient {
+  const apiBase = (opts.apiBase || SHARED_BASE).replace(/\/+$/, "");
+  const token = opts.token;
+  const onAuthError = opts.onAuthError;
 
-  const auth = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+  const authHeader = token ? (token.startsWith("Bearer ") ? token : `Bearer ${token}`) : null;
 
   async function req(path: string, init: RequestInit = {}) {
     const url = `${apiBase}${path}`;
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(extraHeaders || {}),
-      ...(init.headers as Record<string, string> | undefined),
-      Authorization: auth,
-    };
 
-    // Si el método es POST/PUT/PATCH y no hay Content-Type explícito pero hay body objeto,
-    // postJson/putJson/patchJson lo establecen; para GET no hace falta.
-    const res = await fetch(url, {
-      ...init,
+    // Modo fetch con token explícito
+    if (authHeader) {
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        ...(opts.headers || {}),
+        ...(init.headers as Record<string, string> | undefined),
+        Authorization: authHeader,
+      };
+      const res = await fetch(url, { ...init, headers, credentials: "include" });
+      if (res.status === 401 || res.status === 403) { try { onAuthError?.(); } catch {} }
+      if (!res.ok) {
+        let msg = `${res.status} ${res.statusText}`;
+        try {
+          const data = await res.clone().json();
+          if (data?.message) msg = data.message; else if (data?.error) msg = data.error;
+        } catch {}
+        const err: any = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return res;
+    }
+
+    // Modo axios (sin token explícito): delega en axiosApi que ya añade Authorization
+    const method = (init.method || "GET").toUpperCase();
+    const headers = init.headers as Record<string, string> | undefined;
+    const data = init.body;
+
+    const r = await axiosApi.request({
+      url: path,
+      method,
       headers,
-      credentials: "include",
+      data,
+      withCredentials: true,
+      validateStatus: () => true,
+      responseType: "arraybuffer", // nos permite decidir si es texto/json después
     });
 
-    // Manejo de 401/403 (opcional)
-    if (res.status === 401 || res.status === 403) {
-      try { onAuthError?.(); } catch {}
-    }
-
-    if (!res.ok) {
-      // Intenta leer mensaje de error si viene JSON
-      let msg = `${res.status} ${res.statusText}`;
+    if (r.status === 401 || r.status === 403) { try { onAuthError?.(); } catch {} }
+    if (r.status < 200 || r.status >= 300) {
+      let msg = `HTTP ${r.status}`;
       try {
-        const data = await res.clone().json();
-        if (data?.message) msg = data.message;
-        else if (data?.error) msg = data.error;
+        // intento de parseo como JSON
+        const decoder = new TextDecoder();
+        const text = decoder.decode(r.data);
+        const json = JSON.parse(text);
+        msg = json?.message || json?.error || msg;
       } catch {}
-      const err = new Error(msg);
-      // @ts-expect-error attach status
-      (err as any).status = res.status;
+      const err: any = new Error(msg);
+      err.status = r.status;
       throw err;
     }
-    return res;
+
+    // Emular Response minimal para helpers
+    const buf: ArrayBuffer = r.data as any;
+    const decoder = new TextDecoder();
+    const text = decoder.decode(buf);
+    return new Response(text, {
+      status: r.status,
+      headers: new Headers(Object.entries(r.headers || {}) as any),
+    });
   }
 
   return {
     _base: apiBase,
-
     getJson: async <T = any>(p: string, init?: RequestInit) => {
       const res = await req(p, { ...init, method: (init?.method || "GET") });
       return res.json() as Promise<T>;
     },
-
     getText: async (p: string, init?: RequestInit) => {
       const res = await req(p, { ...init, method: (init?.method || "GET") });
       return res.text();
     },
-
     postJson: async <T = any>(p: string, body: any, init?: RequestInit) => {
       const res = await req(p, {
         ...init,
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(init?.headers || {}),
-        },
+        headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
         body: JSON.stringify(body),
       });
-      // Algunas APIs devuelven 204 sin cuerpo
-      const text = await res.text();
-      return (text ? JSON.parse(text) : null) as T;
+      const txt = await res.text();
+      return (txt ? JSON.parse(txt) : null) as T;
     },
-
     putJson: async <T = any>(p: string, body: any, init?: RequestInit) => {
       const res = await req(p, {
         ...init,
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(init?.headers || {}),
-        },
+        headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
         body: JSON.stringify(body),
       });
-      const text = await res.text();
-      return (text ? JSON.parse(text) : null) as T;
+      const txt = await res.text();
+      return (txt ? JSON.parse(txt) : null) as T;
     },
-
     patchJson: async <T = any>(p: string, body: any, init?: RequestInit) => {
       const res = await req(p, {
         ...init,
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(init?.headers || {}),
-        },
+        headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
         body: JSON.stringify(body),
       });
-      const text = await res.text();
-      return (text ? JSON.parse(text) : null) as T;
+      const txt = await res.text();
+      return (txt ? JSON.parse(txt) : null) as T;
     },
-
-    del: async (p: string, init?: RequestInit) => {
-      return req(p, { ...init, method: "DELETE" });
-    },
-
+    del: async (p: string, init?: RequestInit) => req(p, { ...init, method: "DELETE" }),
     downloadCsv: async (p: string, filename: string) => {
       const res = await req(p);
       const blob = await res.blob();
@@ -151,70 +156,29 @@ export function makeApi(apiBaseOrOpts: string | MakeApiOptions, tokenMaybe?: str
   };
 }
 
-/* ============================================================
-   Helpers específicos para CPanel (descubrimiento de endpoint)
-   ============================================================ */
-
-export type CpBusiness = { id: string; name?: string; displayName?: string };
-
-// En base a tu repo server/src/cp/* probamos estos endpoints en orden:
-export const DEFAULT_CP_BIZ_ENDPOINTS = [
-  "/cp/admin/businesses",       // por admin-businesses.controller.ts
-  "/cp/businesses",
-  "/cp/admin/businesses/list",  // por si exponen /list
-  "/admin/businesses",
-  "/businesses",
-] as const;
-
-/**
- * Descubre el endpoint válido para listar negocios del CPanel.
- * Devuelve el array de negocios (vacío si no hay).
- * Lanza un error si ninguno existe o si todos fallan con códigos != 404.
- */
-export async function listCpBusinesses(
-  api: ApiClient,
-  endpoints: readonly string[] = DEFAULT_CP_BIZ_ENDPOINTS
-): Promise<CpBusiness[]> {
-  let lastErr: any = null;
-
-  for (const path of endpoints) {
-    try {
-      const res = await fetch(`${api._base}${path}`, {
-        method: "GET",
+// Reexport directo del descubrimiento (usa axios de shared por defecto)
+export async function listCpBusinesses(apiClient?: ApiClient): Promise<CpBusiness[]> {
+  if (apiClient) {
+    // Adaptador: usa fetch directo contra apiClient._base
+    const ENDPOINTS = [
+      "/cp/admin/businesses",
+      "/cp/businesses",
+      "/cp/admin/businesses/list",
+      "/admin/businesses",
+      "/businesses",
+    ];
+    for (const p of ENDPOINTS) {
+      const res = await fetch(`${apiClient._base}${p}`, {
         headers: { Accept: "application/json" },
         credentials: "include",
       });
-
-      if (res.status === 404) {
-        continue; // probar siguiente
-      }
-
-      if (!res.ok) {
-        // guardar último error “real”
-        let msg = `${res.status} ${res.statusText}`;
-        try {
-          const data = await res.clone().json();
-          if (data?.message) msg = data.message;
-          else if (data?.error) msg = data.error;
-        } catch {}
-        lastErr = new Error(`${msg} en ${path}`);
-        continue;
-      }
-
+      if (res.status === 404) continue;
+      if (!res.ok) continue;
       const data = await res.json();
-      const items = (Array.isArray(data) ? data : data?.items ?? data?.data ?? []) as CpBusiness[];
-      if (Array.isArray(items)) {
-        return items;
-      } else {
-        // formato inesperado pero el endpoint existe: devolvemos array vacío
-        return [];
-      }
-    } catch (e) {
-      lastErr = e;
-      continue;
+      return (Array.isArray(data) ? data : data?.items ?? data?.data ?? []) as CpBusiness[];
     }
+    throw new Error("No existe endpoint CP para listar negocios.");
   }
-
-  if (lastErr) throw lastErr;
-  throw new Error("No existe endpoint CP para listar negocios (probados: " + endpoints.join(", ") + ")");
+  // si no pasan apiClient, delega al shared (axios con token del storage)
+  return listCpBusinessesShared();
 }
