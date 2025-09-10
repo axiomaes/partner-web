@@ -1,7 +1,7 @@
 // src/shared/auth.ts
 import { useEffect, useMemo, useState } from "react";
 
-/* ===== Tipos ===== */
+/* Tipos */
 export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
 
 export type Session = {
@@ -9,94 +9,102 @@ export type Session = {
   role: UserRole;
   token: string;
   ready: boolean;
+  // opcionales (no rompen el tipo si no están)
   name?: string;
   businessId?: string | null;
 };
 
-type RoleLike = Session | UserRole;
+/* Storage */
 const KEY = "axioma.session";
-const ROLE_SET = new Set(["SUPERADMIN","OWNER","ADMIN","BARBER"]);
 
-/* ===== Utils ===== */
-function looksLikeJwt(t?: unknown) {
-  return typeof t === "string" && t.split(".").length === 3 && t.length > 20;
-}
-function normRole(r: unknown): UserRole {
-  const v = String(r || "").toUpperCase();
-  return (ROLE_SET.has(v) ? (v as UserRole) : "BARBER");
-}
-
-/* ===== Persistencia + hardening ===== */
 export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
+    if (!s || typeof s !== "object") throw new Error("bad session");
 
-    // Validaciones duras
-    const token = String(s?.token ?? "");
-    const role  = normRole(s?.role);
-    const email = String(s?.email ?? "");
+    const role = String(s.role || "").toUpperCase();
+    const token = String(s.token || "");
+    if (!token) throw new Error("missing token");
 
-    if (!looksLikeJwt(token)) throw new Error("invalid token");
-    if (!ROLE_SET.has(role)) throw new Error("invalid role");
-
-    return {
-      email,
-      role,
+    const safe: Session = {
+      email: String(s.email || ""),
+      role: (["SUPERADMIN", "OWNER", "ADMIN", "BARBER"].includes(role)
+        ? (role as UserRole)
+        : "BARBER") as UserRole,
       token,
-      ready: !!s?.ready,
-      name: s?.name ? String(s.name) : undefined,
-      businessId: s?.businessId ?? null,
+      ready: !!s.ready, // importante
+      name: s.name ? String(s.name) : undefined,
+      businessId:
+        s.businessId === undefined || s.businessId === null
+          ? null
+          : String(s.businessId),
     };
+    return safe;
   } catch {
-    try { localStorage.removeItem(KEY); } catch {}
+    try {
+      localStorage.removeItem(KEY);
+    } catch {}
     return null;
   }
 }
 
 export function saveSession(s: Session) {
-  localStorage.setItem(KEY, JSON.stringify(s));
-}
-export function clearSession() {
-  try { localStorage.removeItem(KEY); } catch {}
+  localStorage.setItem(
+    KEY,
+    JSON.stringify({
+      email: s.email,
+      role: s.role,
+      token: s.token,
+      ready: !!s.ready,
+      name: s.name,
+      businessId: s.businessId ?? null,
+    })
+  );
 }
 
-/* ===== Hook de sesión ===== */
+export function clearSession() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {}
+}
+
+/* Hook */
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
-  useEffect(() => { setSession(loadSession()); }, []);
+
+  useEffect(() => {
+    setSession(loadSession());
+  }, []);
+
   return useMemo(
     () =>
-      session ?? ({
+      session ?? {
         email: "",
         role: "BARBER",
         token: "",
-        ready: true,       // evita parpadeos
-        name: "",
-        businessId: null,
-      } as Session),
+        ready: true, // <- evita parpadeos mientras se hidrata
+      },
     [session]
   );
 }
 
-/* ===== Helpers de rol/permiso ===== */
-function getRole(x: RoleLike): UserRole {
-  return (typeof x === "string" ? x.toUpperCase() : x.role) as UserRole;
+/* Predicados de rol */
+export function isSuperAdmin(s: Pick<Session, "role">): boolean {
+  return s.role === "SUPERADMIN";
+}
+export function hasRole(s: Pick<Session, "role">, roles: UserRole[]): boolean {
+  return roles.includes(s.role);
 }
 
-export const isSuperAdmin = (who: RoleLike) => getRole(who) === "SUPERADMIN";
-export const isOwner      = (who: RoleLike) => getRole(who) === "OWNER";
-export const isBarber     = (who: RoleLike) => getRole(who) === "BARBER";
-/** ADMIN de negocio = ADMIN u OWNER */
-export const isAdmin      = (who: RoleLike) => {
-  const r = getRole(who);
-  return r === "ADMIN" || r === "OWNER";
-};
-export const isStaff      = (who: RoleLike) => {
-  const r = getRole(who);
-  return r === "OWNER" || r === "ADMIN" || r === "BARBER";
-};
-export const hasRole = (who: RoleLike, roles: UserRole[]) => roles.includes(getRole(who));
-export const canActOnBusiness = (s: Session, businessId?: string | null) =>
-  isSuperAdmin(s) || (!!s.businessId && !!businessId && s.businessId === businessId);
+/* Helpers de compatibilidad (por si hay imports antiguos en el código) */
+export function isAdmin(s: Pick<Session, "role">): boolean {
+  return s.role === "ADMIN" || s.role === "OWNER" || s.role === "SUPERADMIN";
+}
+export function isOwner(s: Pick<Session, "role">): boolean {
+  return s.role === "OWNER";
+}
+export function isBarber(s: Pick<Session, "role">): boolean {
+  return s.role === "BARBER";
+}
