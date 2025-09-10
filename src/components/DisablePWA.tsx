@@ -1,26 +1,42 @@
-// src/components/DisablePWA.tsx
+// partner-web/src/components/DisablePWA.tsx
 import { useEffect } from "react";
 
-export default function DisablePWA(): null {
+/**
+ * Este componente se monta al inicio de la app
+ * y elimina cualquier Service Worker previo que pudiera estar en cache.
+ * Evita el problema del "parpadeo" por SW viejos interceptando requests.
+ */
+export default function DisablePWA() {
   useEffect(() => {
-    // 1) Desregistrar cualquier Service Worker activo
-    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator) {
       navigator.serviceWorker
         .getRegistrations()
         .then((regs) => {
-          regs.forEach((r) => {
-            r.unregister().catch(() => {});
-          });
+          for (const reg of regs) {
+            reg.unregister().catch(() => {
+              /* noop */
+            });
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          /* noop */
+        });
     }
 
-    // 2) Limpiar caches PWA
-    if (typeof window !== "undefined" && "caches" in window) {
+    // Limpia caches antiguas
+    if (window.caches) {
       caches
         .keys()
-        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-        .catch(() => {});
+        .then((keys) => {
+          for (const k of keys) {
+            caches.delete(k).catch(() => {
+              /* noop */
+            });
+          }
+        })
+        .catch(() => {
+          /* noop */
+        });
     }
   }, []);
 
