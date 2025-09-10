@@ -1,44 +1,30 @@
 // partner-web/src/components/DisablePWA.tsx
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-/**
- * Este componente se monta al inicio de la app
- * y elimina cualquier Service Worker previo que pudiera estar en cache.
- * Evita el problema del "parpadeo" por SW viejos interceptando requests.
- */
 export default function DisablePWA() {
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .getRegistrations()
-        .then((regs) => {
-          for (const reg of regs) {
-            reg.unregister().catch(() => {
-              /* noop */
-            });
+    (async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister().catch(() => null)));
+          // Forzar control de página fuera del SW
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
           }
-        })
-        .catch(() => {
-          /* noop */
-        });
-    }
-
-    // Limpia caches antiguas
-    if (window.caches) {
-      caches
-        .keys()
-        .then((keys) => {
-          for (const k of keys) {
-            caches.delete(k).catch(() => {
-              /* noop */
-            });
-          }
-        })
-        .catch(() => {
-          /* noop */
-        });
-    }
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k).catch(() => null)));
+        }
+        // Fuerza recarga dura una sola vez si había SW
+        const flag = sessionStorage.getItem('__pwa_cleared__');
+        if (!flag) {
+          sessionStorage.setItem('__pwa_cleared__', '1');
+          window.location.replace(window.location.pathname + window.location.search);
+        }
+      } catch {}
+    })();
   }, []);
-
   return null;
 }
