@@ -8,7 +8,7 @@ export type Session = {
   role: UserRole;
   token: string;
   ready: boolean;
-  name?: string; // opcional, usado en algunos layouts
+  name?: string; // opcional para cabeceras/ux
 };
 
 const KEY = "axioma.session";
@@ -30,9 +30,7 @@ export function loadSession(): Session | null {
       name: s.name ? String(s.name) : undefined,
     };
   } catch {
-    try {
-      localStorage.removeItem(KEY);
-    } catch {}
+    try { localStorage.removeItem(KEY); } catch {}
     return null;
   }
 }
@@ -42,12 +40,10 @@ export function saveSession(s: Session) {
 }
 
 export function clearSession() {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {}
+  try { localStorage.removeItem(KEY); } catch {}
 }
 
-// ---- React hook ----
+// ---- Hook de sesión ----
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
 
@@ -55,6 +51,7 @@ export function useSession(): Session {
     setSession(loadSession());
   }, []);
 
+  // Fallback seguro para no romper la UI antes de cargar
   return useMemo(
     () =>
       session ?? {
@@ -68,19 +65,42 @@ export function useSession(): Session {
   );
 }
 
-// ---- Helpers de roles ----
-export function isAdmin(session: Session): boolean {
-  return session.role === "ADMIN" || session.role === "OWNER" || session.role === "SUPERADMIN";
+// ---- Helpers de roles (semántica clara) ----
+
+// Útil para checks ad-hoc
+export function hasRole(session: Session, roles: UserRole[] = []): boolean {
+  return roles.includes(session.role);
 }
 
+// SUPERADMIN: rol superior, control total del sistema / CPanel global
 export function isSuperAdmin(session: Session): boolean {
   return session.role === "SUPERADMIN";
 }
 
-export function isOwner(session: Session): boolean {
-  return session.role === "OWNER";
+// Admin de NEGOCIO (no global): OWNER o ADMIN
+// Importante: NO incluye SUPERADMIN para evitar confusiones en vistas de negocio.
+export function isAdmin(session: Session): boolean {
+  return session.role === "OWNER" || session.role === "ADMIN";
 }
 
-export function isBarber(session: Session): boolean {
-  return session.role === "BARBER";
+// Staff del negocio (toda la operativa diaria)
+export function isBusinessStaff(session: Session): boolean {
+  return session.role === "OWNER" || session.role === "ADMIN" || session.role === "BARBER";
+}
+
+// Roles atómicos (por comodidad)
+export function isOwner(session: Session): boolean { return session.role === "OWNER"; }
+export function isBarber(session: Session): boolean { return session.role === "BARBER"; }
+
+// Ayudas de routing (recomendadas)
+export function canAccessCPanel(session: Session): boolean {
+  return isSuperAdmin(session);
+}
+export function canAccessBusinessPanel(session: Session): boolean {
+  return isBusinessStaff(session);
+}
+
+// Helper UX para mostrar nombre
+export function displayName(session: Session): string {
+  return session.name || session.email || "Usuario";
 }
