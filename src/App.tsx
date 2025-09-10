@@ -24,15 +24,25 @@ import ProtectedCpanelRoute from "./components/ProtectedCpanelRoute";
 // 🔧 Limpia SW/cachés en cliente
 import DisablePWA from "./components/DisablePWA";
 
-import { useSession } from "@/shared/auth";
+import { useSession, isSuperAdmin } from "@/shared/auth";
 
 export default function App(): JSX.Element {
   const [open, setOpen] = useState(false);
   const s = useSession();
+
+  // Evita “parpadeo” por redirecciones hasta que la sesión esté hidratada
+  if (!s.ready) {
+    return (
+      <div className="min-h-dvh grid place-items-center bg-brand-cream">
+        <div className="text-sm text-slate-500">Cargando…</div>
+      </div>
+    );
+  }
+
   const isAuth = !!s.token;
-  const isSuper = s.role === "SUPERADMIN";
-  const isAllowedSuper =
-    isSuper && s.email?.toLowerCase() === "admin@axioma-creativa.es";
+  const isSuper = isSuperAdmin(s);
+  // Lista blanca opcional para CPanel (además del guard)
+  const isAllowedSuper = isSuper && s.email?.toLowerCase() === "admin@axioma-creativa.es";
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "nav-link-active" : "nav-link";
@@ -82,19 +92,8 @@ export default function App(): JSX.Element {
             className="sm:hidden nav-link-base text-white hover:bg-white/10"
             onClick={() => setOpen((v) => !v)}
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M4 7h16M4 12h16M4 17h16"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         </div>
@@ -104,28 +103,16 @@ export default function App(): JSX.Element {
           <div className="sm:hidden bg-brand-primary-dark/95 text-white border-t border-white/10 shadow-lg backdrop-blur">
             <div className="container-app py-2 flex flex-col">
               {!isAuth ? (
-                <NavLink
-                  to="/login"
-                  className={navClass}
-                  onClick={() => setOpen(false)}
-                >
+                <NavLink to="/login" className={navClass} onClick={() => setOpen(false)}>
                   Entrar
                 </NavLink>
               ) : (
                 <>
-                  <NavLink
-                    to="/app"
-                    className={navClass}
-                    onClick={() => setOpen(false)}
-                  >
+                  <NavLink to="/app" className={navClass} onClick={() => setOpen(false)}>
                     Panel
                   </NavLink>
                   {isAllowedSuper && (
-                    <NavLink
-                      to="/cpanel"
-                      className={navClass}
-                      onClick={() => setOpen(false)}
-                    >
+                    <NavLink to="/cpanel" className={navClass} onClick={() => setOpen(false)}>
                       CPanel
                     </NavLink>
                   )}
@@ -211,8 +198,7 @@ export default function App(): JSX.Element {
             <div className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p>© {new Date().getFullYear()} Axioma Loyalty</p>
               <p className="text-slate-400">
-                Hecho con <span className="text-brand-gold">★</span> por Axioma
-                Creativa
+                Hecho con <span className="text-brand-gold">★</span> por Axioma Creativa
               </p>
             </div>
           </div>
