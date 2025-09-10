@@ -1,185 +1,143 @@
-// partner-web/src/pages/LoginStaff.tsx
+// src/pages/LoginStaff.tsx
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { baseURL, type UserRole } from "@/shared/api";
-import { saveSession, clearSession, type Session, useSession } from "@/shared/auth";
+import { useNavigate, Navigate } from "react-router-dom";
+import { saveSession, useSession, type Session } from "../shared/auth";
+import { postLoginPath } from "../shared/redirects";
 
-/* ===== Helpers JWT (tolerantes) ===== */
-function decodeJwt(token: string): any | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null; // no parece JWT -> devolvemos null
-    const payload = parts[1];
-    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-    return json || null;
-  } catch {
-    return null;
-  }
-}
-const VALID_ROLES = new Set(["SUPERADMIN", "OWNER", "ADMIN", "BARBER"]);
-function normRole(r?: string | null): UserRole | null {
-  if (!r) return null;
-  const up = r.toUpperCase();
-  return VALID_ROLES.has(up) ? (up as UserRole) : null;
-}
-function jwtRole(token: string): UserRole | null {
-  const j = decodeJwt(token);
-  const raw =
-    j?.role ??
-    j?.claims?.role ??
-    (Array.isArray(j?.roles) ? j.roles[0] : j?.roles) ??
-    null;
-  return normRole(typeof raw === "string" ? raw : null);
-}
-function jwtEmail(token: string): string | null {
-  const j = decodeJwt(token);
-  const e = j?.email || j?.upn || j?.sub || null;
-  return typeof e === "string" ? e : null;
-}
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  (location.hostname.endsWith(".axioma-creativa.es")
+    ? "https://axioma-api.stacks.axioma-creativa.es"
+    : "http://localhost:3000");
 
 export default function LoginStaff() {
   const nav = useNavigate();
-  const loc = useLocation() as { state?: { from?: string } };
   const s = useSession();
 
+  // Si ya hay sesión válida, manda directo a su destino
+  if (s.ready && s.token) {
+    return <Navigate to={postLoginPath(s)} replace />;
+  }
+
   const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  // Si ya hay sesión lista, redirige por rol (evita titileo)
-  useEffect(() => {
-    if (!s.ready || !s.token) return;
-    if (s.role === "SUPERADMIN") {
-      nav("/cpanel", { replace: true });
-    } else {
-      const to =
-        loc.state?.from && typeof loc.state.from === "string"
-          ? loc.state.from
-          : "/app";
-      nav(to, { replace: true });
-    }
-    // NO dependemos de loc.state para evitar re-render loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.ready, s.token, s.role, nav]);
-
-  const onSubmit = async (e: React.FormEvent) => {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setErr("");
-    if (loading) return;
-    setLoading(true);
+    setErr(null);
+    setSubmitting(true);
     try {
-      const body = { email, password: pass };
-      const res = await fetch(`${baseURL}/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ email, password }),
       });
+      const json = await res.json().catch(() => ({}));
 
-      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(
-          data?.message ||
-            (res.status === 401
-              ? "Credenciales inválidas."
-              : `Error HTTP ${res.status}`)
-        );
+        // Backend suele devolver { message } o { error }
+        const msg = json?.message || json?.error || "No autorizado";
+        throw new Error(msg);
       }
 
-      // Token puede venir como JWT o opaco
-      const token: string | undefined = data?.access_token || data?.accessToken;
-      if (!token || String(token).trim().length < 8) {
-        throw new Error("No se recibió un access_token válido.");
-      }
+      // La API debe devolver { access_token, role?, email?, name?, businessId? }
+      const token: string = json?.access_token || json?.token;
+      if (!token) throw new Error("Token ausente en la respuesta");
 
-      // Preferimos datos del API; si faltan, intentamos desde el JWT
-      const apiEmail: string | undefined = data?.user?.email;
-      const apiRole: string | undefined = data?.user?.role;
-
-      const decodedEmail = jwtEmail(token);
-      const decodedRole = jwtRole(token);
-
-      const finalEmail =
-        (apiEmail && String(apiEmail)) || decodedEmail || email.trim();
-      const finalRole: UserRole =
-        normRole(apiRole ?? undefined) ??
-        decodedRole ??
-        ("BARBER" as UserRole);
-
-      const name: string | undefined = data?.user?.name || data?.user?.fullName;
-      const businessId: string | null =
-        data?.user?.businessId ?? data?.user?.business_id ?? null;
-
-      const session: Session = {
-        email: finalEmail,
-        role: finalRole,
+      // Mejor si el backend manda role explícito; si no, usa el que tengas localmente o "BARBER".
+      const role = (json?.role || "BARBER") as Session["role"];
+      const sess: Session = {
+        email: json?.email || email,
+        role,
         token,
-        ready: true, // <- clave para evitar loops
-        name,
-        businessId,
+        ready: true,
+        name: json?.name,
+        businessId:
+          json?.businessId === undefined || json?.businessId === null
+            ? null
+            : String(json.businessId),
       };
-
-      saveSession(session);
+      saveSession(sess);
 
       // Redirección por rol
-      if (finalRole === "SUPERADMIN") {
-        nav("/cpanel", { replace: true });
-      } else {
-        const to =
-          loc.state?.from && typeof loc.state.from === "string"
-            ? loc.state.from
-            : "/app";
-        nav(to, { replace: true });
-      }
+      nav(postLoginPath(sess), { replace: true });
     } catch (e: any) {
-      setErr(e?.message || "No se pudo iniciar sesión.");
-      clearSession();
+      setErr(e?.message || "No autorizado");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-  };
+  }
 
-  const disabled = loading || !email || !pass;
+  // UX: foco en email la primera vez
+  useEffect(() => {
+    const el = document.getElementById("login-email") as HTMLInputElement | null;
+    el?.focus();
+  }, []);
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center p-4">
-      <form onSubmit={onSubmit} className="card bg-base-100 shadow-xl w-full max-w-md">
-        <div className="card-body">
-          <h2 className="card-title">Acceso Staff</h2>
-          {!!err && <div className="alert alert-warning">{err}</div>}
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+      <form
+        onSubmit={onSubmit}
+        style={{
+          width: "100%",
+          maxWidth: 380,
+          display: "grid",
+          gap: 12,
+          padding: 24,
+          borderRadius: 16,
+          boxShadow: "0 6px 24px rgba(0,0,0,.08)",
+          background: "white",
+        }}
+      >
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Iniciar sesión</h1>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 12, opacity: 0.75 }}>Correo</span>
+          <input
+            id="login-email"
+            type="email"
+            placeholder="correo@dominio.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="username"
+            style={{ padding: 12, borderRadius: 10, border: "1px solid #e5e7eb" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 12, opacity: 0.75 }}>Contraseña</span>
+          <input
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            style={{ padding: 12, borderRadius: 10, border: "1px solid #e5e7eb" }}
+          />
+        </label>
 
-          <label className="form-control w-full">
-            <span className="label-text">Email</span>
-            <input
-              type="email"
-              className="input input-bordered w-full"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-              autoComplete="username"
-              inputMode="email"
-            />
-          </label>
+        <button
+          disabled={submitting}
+          type="submit"
+          style={{
+            padding: "12px 14px",
+            borderRadius: 10,
+            border: 0,
+            background: "#111827",
+            color: "white",
+            fontWeight: 600,
+          }}
+        >
+          {submitting ? "Entrando…" : "Entrar"}
+        </button>
 
-          <label className="form-control w-full">
-            <span className="label-text">Contraseña</span>
-            <input
-              type="password"
-              className="input input-bordered w-full"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-
-          <div className="card-actions justify-end mt-2">
-            <button className={`btn btn-primary ${loading ? "loading" : ""}`} disabled={disabled}>
-              {loading ? "" : "Entrar"}
-            </button>
+        {err && (
+          <div style={{ color: "crimson", fontSize: 13, lineHeight: 1.4 }}>
+            {String(err)}
           </div>
-        </div>
+        )}
       </form>
     </div>
   );
