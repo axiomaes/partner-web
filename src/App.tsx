@@ -8,7 +8,7 @@ import CustomerOTP from "./pages/CustomerOTP";
 import LoginStaff from "./pages/LoginStaff";
 import Unauthorized from "./pages/Unauthorized";
 
-// Panel (protegido negocio)
+// Panel negocio
 import Dashboard from "./pages/Dashboard";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
@@ -27,7 +27,7 @@ export default function App(): JSX.Element {
   const [open, setOpen] = useState(false);
   const s = useSession();
 
-  // Evita “parpadeo” por redirecciones hasta que la sesión esté hidratada
+  // Evita “parpadeo” hasta hidratar sesión
   if (!s.ready) {
     return (
       <div className="min-h-dvh grid place-items-center bg-brand-cream">
@@ -38,9 +38,6 @@ export default function App(): JSX.Element {
 
   const isAuth = !!s.token;
   const isSuper = isSuperAdmin(s);
-  // Lista blanca opcional para CPanel (además del guard)
-  const isAllowedSuper =
-    isSuper && s.email?.toLowerCase() === "admin@axioma-creativa.es";
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "nav-link-active" : "nav-link";
@@ -72,7 +69,7 @@ export default function App(): JSX.Element {
                 <NavLink to="/app" className={navClass}>
                   Panel
                 </NavLink>
-                {isAllowedSuper && (
+                {isSuper && (
                   <NavLink to="/cpanel" className={navClass}>
                     CPanel
                   </NavLink>
@@ -125,7 +122,7 @@ export default function App(): JSX.Element {
                   >
                     Panel
                   </NavLink>
-                  {isAllowedSuper && (
+                  {isSuper && (
                     <NavLink
                       to="/cpanel"
                       className={navClass}
@@ -149,6 +146,7 @@ export default function App(): JSX.Element {
 
           {/* Público portal OTP */}
           <Route path="/customer-auth" element={<CustomerOTP />} />
+          <Route path="/portal" element={<CustomerOTP />} />
           <Route path="/login" element={<LoginStaff />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
 
@@ -194,7 +192,7 @@ export default function App(): JSX.Element {
             }
           />
 
-          {/* CPanel súperadmin allowlisted */}
+          {/* CPanel súperadmin */}
           <Route
             path="/cpanel/*"
             element={
