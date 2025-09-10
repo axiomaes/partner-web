@@ -1,14 +1,10 @@
-# dependencias y build
 node_modules
 dist
-
-# control de versiones / metadatos
 .git
 .gitignore
-*.tsbuildinfo
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# otros que no hacen falta en el contexto
-docker-compose*.yml
+Dockerfile*
+docker-compose*
+.vscode
+*.log
+coverage
+.DS_Store
