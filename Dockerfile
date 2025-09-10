@@ -29,6 +29,19 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copia artefactos compilados
 COPY --from=build /app/dist ./
 
+# partner-web/Dockerfile (fragmento del runtime)
+FROM nginx:1.27-alpine AS runtime
+WORKDIR /usr/share/nginx/html
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist ./
+
+# 🧹 Anti-SW defensivo
+RUN rm -f /usr/share/nginx/html/sw.js \
+         /usr/share/nginx/html/service-worker.js \
+         /usr/share/nginx/html/registerSW.js
+
+
 # (Opcional) Healthcheck simple a index.html
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
   wget -qO- http://localhost/index.html >/dev/null 2>&1 || exit 1
