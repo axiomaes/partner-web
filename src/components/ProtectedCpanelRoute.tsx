@@ -1,32 +1,24 @@
-// src/components/ProtectedCpanelRoute.tsx
-import { Navigate, useLocation } from "react-router-dom";
+import { PropsWithChildren } from "react";
+import { Navigate } from "react-router-dom";
 import { useSession, isSuperAdmin } from "@/shared/auth";
-import React from "react";
 
-/**
- * Guard minimalista:
- * - Requiere sesión y rol SUPERADMIN.
- * - NO usa allowlist por email (la podemos reactivar luego).
- */
-export default function ProtectedCpanelRoute({ children }: { children: React.ReactNode }) {
+function Splash() {
+  return (
+    <div className="min-h-dvh grid place-items-center bg-base-200">
+      <div className="text-center space-y-3">
+        <span className="loading loading-spinner loading-lg" />
+        <p className="opacity-70">Cargando…</p>
+      </div>
+    </div>
+  );
+}
+
+export default function ProtectedCpanelRoute({ children }: PropsWithChildren) {
   const s = useSession();
-  const loc = useLocation();
 
-  if (!s.ready) return null;
-
-  if (!s.token) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: `${loc.pathname}${loc.search || ""}${loc.hash || ""}` }}
-      />
-    );
-  }
-
-  if (!isSuperAdmin(s)) {
-    return <Navigate to="/unauthorized" replace />;
-  }
+  if (!s.ready) return <Splash />;                 // esperar hidratación
+  if (!s.token) return <Navigate to="/login" replace />; // sin sesión → login
+  if (!isSuperAdmin(s)) return <Navigate to="/unauthorized" replace />;
 
   return <>{children}</>;
 }
