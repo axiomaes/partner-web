@@ -9,32 +9,45 @@ export type Session = {
   role: UserRole;
   token: string;
   ready: boolean;
-  /** Nombre visible (opcional) */
   name?: string;
-  /** Negocio del staff; null/undefined para SUPERADMIN */
   businessId?: string | null;
 };
 
 type RoleLike = Session | UserRole;
-
 const KEY = "axioma.session";
+const ROLE_SET = new Set(["SUPERADMIN","OWNER","ADMIN","BARBER"]);
 
-/* ===== Persistencia ===== */
+/* ===== Utils ===== */
+function looksLikeJwt(t?: unknown) {
+  return typeof t === "string" && t.split(".").length === 3 && t.length > 20;
+}
+function normRole(r: unknown): UserRole {
+  const v = String(r || "").toUpperCase();
+  return (ROLE_SET.has(v) ? (v as UserRole) : "BARBER");
+}
+
+/* ===== Persistencia + hardening ===== */
 export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    if (!s || typeof s !== "object" || typeof s.token !== "string") {
-      throw new Error("bad session");
-    }
+
+    // Validaciones duras
+    const token = String(s?.token ?? "");
+    const role  = normRole(s?.role);
+    const email = String(s?.email ?? "");
+
+    if (!looksLikeJwt(token)) throw new Error("invalid token");
+    if (!ROLE_SET.has(role)) throw new Error("invalid role");
+
     return {
-      email: String(s.email || ""),
-      role: (String(s.role || "").toUpperCase() as UserRole) || "BARBER",
-      token: String(s.token),
-      ready: !!s.ready,
-      name: s.name ? String(s.name) : undefined,
-      businessId: s.businessId ?? null,
+      email,
+      role,
+      token,
+      ready: !!s?.ready,
+      name: s?.name ? String(s.name) : undefined,
+      businessId: s?.businessId ?? null,
     };
   } catch {
     try { localStorage.removeItem(KEY); } catch {}
@@ -45,7 +58,6 @@ export function loadSession(): Session | null {
 export function saveSession(s: Session) {
   localStorage.setItem(KEY, JSON.stringify(s));
 }
-
 export function clearSession() {
   try { localStorage.removeItem(KEY); } catch {}
 }
@@ -60,7 +72,7 @@ export function useSession(): Session {
         email: "",
         role: "BARBER",
         token: "",
-        ready: true,
+        ready: true,       // evita parpadeos
         name: "",
         businessId: null,
       } as Session),
@@ -81,14 +93,10 @@ export const isAdmin      = (who: RoleLike) => {
   const r = getRole(who);
   return r === "ADMIN" || r === "OWNER";
 };
-/** Cualquier staff (no superadmin) */
 export const isStaff      = (who: RoleLike) => {
   const r = getRole(who);
   return r === "OWNER" || r === "ADMIN" || r === "BARBER";
 };
-/** Chequea si el rol actual está en la lista permitida */
 export const hasRole = (who: RoleLike, roles: UserRole[]) => roles.includes(getRole(who));
-
-/** Puede actuar sobre un negocio dado (superadmin o staff del mismo negocio) */
 export const canActOnBusiness = (s: Session, businessId?: string | null) =>
   isSuperAdmin(s) || (!!s.businessId && !!businessId && s.businessId === businessId);
