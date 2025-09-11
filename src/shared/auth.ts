@@ -33,7 +33,7 @@ export function loadSession(): Session | null {
         ? (role as UserRole)
         : "BARBER") as UserRole,
       token,
-      // Importante: la sesión solo se marca lista si es válida
+      // sesión válida → lista
       ready: true,
       name: s.name ? String(s.name) : undefined,
       businessId:
@@ -43,62 +43,61 @@ export function loadSession(): Session | null {
     };
     return safe;
   } catch {
-    try {
-      localStorage.removeItem(KEY);
-    } catch {}
+    try { localStorage.removeItem(KEY); } catch {}
     return null;
   }
 }
 
 export function saveSession(s: Session) {
-  // Forzamos ready=true al persistir una sesión válida tras login
-  const toSave: Session = {
+  localStorage.setItem(KEY, JSON.stringify({
     email: s.email,
     role: s.role,
     token: s.token,
     ready: true,
     name: s.name,
     businessId: s.businessId ?? null,
-  };
-  localStorage.setItem(KEY, JSON.stringify(toSave));
+  }));
 }
 
 export function clearSession() {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {}
+  try { localStorage.removeItem(KEY); } catch {}
 }
 
 /* Hook */
 export function useSession(): Session {
   const [session, setSession] = useState<Session | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setSession(loadSession());
+    setHydrated(true); // ← importante: ya hidratamos (tengas o no token)
   }, []);
 
-  // Fallback tipado explícito para evitar el TS2322
-  const fallback: Session = {
-    email: "",
-    role: "BARBER",
-    token: "",
-    ready: false, // ← clave para evitar el “flash” antes de hidratar
-  };
-
-  return useMemo<Session>(() => (session ?? fallback), [session]);
+  // Si hay sesión válida, úsala. Si no, devolvemos una sesión “vacía”
+  // con ready=true una vez hidratado, para que el router pueda mostrar /login.
+  return useMemo<Session>(
+    () =>
+      session ?? {
+        email: "",
+        role: "BARBER",
+        token: "",
+        ready: hydrated, // false antes de hidratar; true después, aunque no haya token
+      },
+    [session, hydrated]
+  );
 }
 
 /* ===== Helpers de rol tolerantes (aceptan objeto o string) ===== */
 
-const VALID = new Set<UserRole>(["SUPERADMIN", "OWNER", "ADMIN", "BARBER"]);
+const VALID = new Set<UserRole>(["SUPERADMIN","OWNER","ADMIN","BARBER"]);
 
 function normRoleMaybe(r: unknown): UserRole | null {
   if (typeof r !== "string") return null;
   const up = r.toUpperCase();
-  return VALID.has(up as UserRole) ? (up as UserRole) : null;
+  return (VALID.has(up as UserRole) ? (up as UserRole) : null);
 }
 
-function resolveRole(subject: Pick<Session, "role"> | UserRole | string): UserRole {
+function resolveRole(subject: Pick<Session,"role"> | UserRole | string): UserRole {
   if (subject && typeof subject === "object" && "role" in subject) {
     const role = (subject as any).role;
     return normRoleMaybe(role) ?? "BARBER";
@@ -106,27 +105,25 @@ function resolveRole(subject: Pick<Session, "role"> | UserRole | string): UserRo
   return normRoleMaybe(String(subject)) ?? "BARBER";
 }
 
-/** Devuelve true si el sujeto (objeto o string) está en alguno de los roles dados */
 export function hasRole(
-  subject: Pick<Session, "role"> | UserRole | string,
+  subject: Pick<Session,"role"> | UserRole | string,
   roles: UserRole[]
 ): boolean {
   const r = resolveRole(subject);
   return roles.includes(r);
 }
 
-export function isSuperAdmin(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isSuperAdmin(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "SUPERADMIN";
 }
 
-/* Helpers de compatibilidad (hay imports antiguos en el código) */
-export function isAdmin(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isAdmin(subject: Pick<Session,"role"> | UserRole | string): boolean {
   const r = resolveRole(subject);
   return r === "ADMIN" || r === "OWNER" || r === "SUPERADMIN";
 }
-export function isOwner(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isOwner(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "OWNER";
 }
-export function isBarber(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isBarber(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "BARBER";
 }
