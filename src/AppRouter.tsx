@@ -13,8 +13,9 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
+import AdminPanel from "./pages/AdminPanel";          // 👈 RECUPERADO
 import Dashboard from "./pages/Dashboard";
-import Customers from "./pages/Customers";        // ← listado (NUEVO import)
+import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 
@@ -25,7 +26,6 @@ function AlreadyLoggedRedirect() {
   const s = useSession();
   if (!s.ready) return null;
   if (s.token) {
-    // SUPERADMIN -> /cpanel ; resto -> /app
     return <Navigate to={isSuperAdmin(s) ? "/cpanel" : "/app"} replace />;
   }
   return null;
@@ -37,7 +37,7 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Primera pantalla = Home (redirige según sesión/rol) */}
+        {/* Home */}
         <Route
           path="/"
           element={
@@ -70,8 +70,18 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* Si es ADMIN/OWNER entra al dashboard; si es BARBER redirige a check-in */}
-              {isAdmin(s) ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
+              {/* 👇 si es admin/owner/superadmin, lo llevamos al AdminPanel */}
+              {isAdmin(s) ? <Navigate to="/app/admin" replace /> : <Navigate to="/staff/checkin" replace />}
+            </RouteGuard>
+          }
+        />
+
+        {/* 👇 Ruta visible del AdminPanel */}
+        <Route
+          path="/app/admin"
+          element={
+            <RouteGuard>
+              <AdminPanel />
             </RouteGuard>
           }
         />
@@ -107,11 +117,7 @@ export default function AppRouter() {
           path="/cpanel/*"
           element={
             <RouteGuard>
-              {isSuperAdmin(s) ? (
-                <CPanelAdminDashboard />
-              ) : (
-                <Navigate to="/unauthorized" replace />
-              )}
+              {isSuperAdmin(s) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
             </RouteGuard>
           }
         />
