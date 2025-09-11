@@ -82,9 +82,13 @@ function businessFromToken(token: string): string | null {
 export function postLoginPathByRole(role: UserRole): string {
   switch (role) {
     case "SUPERADMIN": return "/cpanel";
+    // 🔧 Importante: tu router no tiene /app/admin ni /staff/checkin
+    // Manda a /app para OWNER/ADMIN/BARBER
     case "OWNER":
-    case "ADMIN":      return "/app/admin";
-    case "BARBER":     return "/staff/checkin";
+    case "ADMIN":
+    case "BARBER":
+    default:
+      return "/app";
   }
 }
 
@@ -177,7 +181,7 @@ export async function authLogin(email: string, password: string) {
 export type CpBusiness = { id: string; name?: string; displayName?: string };
 
 const CP_BIZ_ENDPOINTS = [
-  "/cp/admin/businesses",       // probable por admin-businesses.controller.ts
+  "/cp/admin/businesses",
   "/cp/businesses",
   "/cp/admin/businesses/list",
   "/admin/businesses",
