@@ -1,4 +1,3 @@
-// src/AppRouter.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
@@ -10,14 +9,14 @@ import Unauthorized from "./pages/Unauthorized";
 
 /* Portal clientes */
 import CustomerOTP from "./pages/CustomerOTP";
-import PortalPoints from "./portal/PortalPoints"; // ← ruta correcta
+import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
 import Dashboard from "./pages/Dashboard";
+import Customers from "./pages/Customers";        // ← listado (NUEVO import)
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
-// import CustomersPage from "./pages/CustomersPage"; // ← NO existe, la quitamos
 
 /* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
@@ -71,17 +70,21 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* Si es ADMIN/OWNER entra al dashboard; si es BARBER puedes redirigir a check-in */}
-              {isAdmin(s) ? (
-                <Dashboard />
-              ) : (
-                <Navigate to="/staff/checkin" replace />
-              )}
+              {/* Si es ADMIN/OWNER entra al dashboard; si es BARBER redirige a check-in */}
+              {isAdmin(s) ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
         />
 
-        {/* Clientes (usa CustomersNew y Detail que sí existen) */}
+        {/* Clientes */}
+        <Route
+          path="/app/customers"
+          element={
+            <RouteGuard>
+              <Customers />
+            </RouteGuard>
+          }
+        />
         <Route
           path="/app/customers/new"
           element={
