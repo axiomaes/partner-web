@@ -1,4 +1,3 @@
-// partner-web/src/pages/Customers.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listCustomers, deleteCustomer } from "@/shared/api";
@@ -32,7 +31,8 @@ export default function CustomersPage() {
       .then((data) => alive && setRows(Array.isArray(data) ? data : []))
       .catch((e) => {
         if (!alive) return;
-        setError(e?.response?.data?.message || e.message || "No se pudo cargar el listado.");
+        const msg = e?.response?.data?.message || e?.message || "No se pudo cargar el listado.";
+        setError(msg);
       })
       .finally(() => alive && setLoading(false));
     return () => {
@@ -59,10 +59,12 @@ export default function CustomersPage() {
       await deleteCustomer(c.id);
       setRows((prev) => prev.filter((x) => x.id !== c.id));
     } catch (e: any) {
+      const status = e?.response?.status;
+      const apiMsg = e?.response?.data?.message;
       const msg =
-        e?.status === 403
-          ? "No tienes permiso para eliminar (intenta con un usuario ADMIN u OWNER)."
-          : e?.message || "No se pudo eliminar.";
+        status === 401 || status === 403
+          ? apiMsg || "No tienes permiso para eliminar (intenta con un usuario ADMIN u OWNER)."
+          : apiMsg || e?.message || "No se pudo eliminar.";
       setError(msg);
     }
   }
@@ -72,8 +74,14 @@ export default function CustomersPage() {
       {/* Toolbar */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div className="join w-full md:w-auto">
-          <div className="join-item input input-bordered flex items-center gap-2 w-full md:w-80">
-            <svg xmlns="http://www.w3.org/2000/svg" className="size-4 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <label className="join-item input input-bordered flex items-center gap-2 w-full md:w-80">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="size-4 opacity-60"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+            >
               <path strokeWidth="2" d="m21 21-3.5-3.5M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />
             </svg>
             <input
@@ -82,19 +90,20 @@ export default function CustomersPage() {
               type="text"
               placeholder="Buscar por nombre, teléfono o email…"
               className="grow"
+              disabled={loading}
             />
-          </div>
+          </label>
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Link to="/app/customers/new" className="btn btn-primary">
+          <Link to="/app/customers/new" className={`btn btn-primary ${loading ? "btn-disabled" : ""}`}>
             Nuevo cliente
           </Link>
         </div>
       </div>
 
       {error && (
-        <div className="alert alert-warning mb-4">
+        <div className="alert alert-warning mb-4" aria-live="polite">
           <span>{error}</span>
         </div>
       )}
@@ -129,11 +138,18 @@ export default function CustomersPage() {
                   <td className="hidden sm:table-cell">{admin ? c.email || "—" : maskEmail(c.email)}</td>
                   <td className="text-right">
                     <div className="join">
-                      <Link to={`/app/customers/${c.id}`} className="btn btn-ghost btn-xs join-item">
+                      <Link
+                        to={`/app/customers/${c.id}`}
+                        className={`btn btn-ghost btn-xs join-item ${loading ? "btn-disabled" : ""}`}
+                      >
                         Ver
                       </Link>
                       {admin && (
-                        <button onClick={() => onDeleteRow(c)} className="btn btn-ghost btn-xs join-item text-error">
+                        <button
+                          onClick={() => onDeleteRow(c)}
+                          className={`btn btn-ghost btn-xs join-item text-error ${loading ? "btn-disabled" : ""}`}
+                          disabled={loading}
+                        >
                           Eliminar
                         </button>
                       )}
