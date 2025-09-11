@@ -23,8 +23,7 @@ function parseJwt<T = any>(token: string): T | null {
     if (!payload) return null;
     const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
     try {
-      // Manejo de UTF-8 si hiciera falta
-      return JSON.parse(decodeURIComponent(escape(json))) as T;
+      return JSON.parse(decodeURIComponent(escape(json))) as T; // UTF-8 safe
     } catch {
       return JSON.parse(json) as T;
     }
@@ -35,7 +34,7 @@ function parseJwt<T = any>(token: string): T | null {
 
 function isExpired(token: string): boolean {
   const p = parseJwt<{ exp?: number }>(token);
-  if (!p?.exp) return false; // si no hay exp, asumimos no expirado (tu API la incluye)
+  if (!p?.exp) return false;
   const now = Math.floor(Date.now() / 1000);
   return p.exp <= now;
 }
@@ -59,23 +58,22 @@ export function loadSession(): Session | null {
     const token = String(s.token || "");
     if (!token) throw new Error("missing token");
 
-    // 🔒 Si el token está vencido o corrupto, eliminamos y devolvemos null
-    if (!token || isExpired(token)) {
+    // Token vencido → limpiar y salir
+    if (isExpired(token)) {
       try { localStorage.removeItem(KEY); } catch {}
       return null;
     }
 
     const role =
       normRoleMaybe(s.role) ??
-      // Fallback por compatibilidad: intenta leer del JWT si no guardamos role
-      (normRoleMaybe((parseJwt<{ role?: string }>(token)?.role ?? "").toString()) ??
-        "BARBER");
+      normRoleMaybe((parseJwt<{ role?: string }>(token)?.role ?? "").toString()) ??
+      "BARBER";
 
     const safe: Session = {
       email: String(s.email || ""),
       role,
       token,
-      ready: true, // ya validamos el token
+      ready: true,
       name: s.name ? String(s.name) : undefined,
       businessId:
         s.businessId === undefined || s.businessId === null
@@ -90,7 +88,6 @@ export function loadSession(): Session | null {
 }
 
 export function saveSession(s: Session) {
-  // Guardamos siempre ready:true tras login correcto
   localStorage.setItem(KEY, JSON.stringify({
     email: s.email,
     role: s.role,
@@ -107,27 +104,34 @@ export function clearSession() {
 
 /* Hook */
 export function useSession(): Session {
-  const [session, setSession] = useState<Session | null>(null);
+  // undefined = aún hidratando; null/objeto = ya hidratado
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
-    setSession(loadSession());
-  }, []);
-
-  // Mientras hidrata desde localStorage, evitamos decidir rutas
-  return useMemo(
-    () =>
-      session ?? {
+    const s = loadSession();
+    // 🔧 Fix: si NO hay sesión, colocamos una vacía con ready:true
+    setSession(
+      s ?? {
         email: "",
         role: "BARBER",
         token: "",
-        ready: false, // clave para evitar “parpadeo”
-      },
+        ready: true,
+      }
+    );
+  }, []);
+
+  // Mientras hidrata (session === undefined) devolvemos ready:false
+  return useMemo(
+    () =>
+      session === undefined
+        ? { email: "", role: "BARBER", token: "", ready: false }
+        : session,
     [session]
   );
 }
 
 /* ===== Helpers de rol tolerantes (aceptan objeto o string) ===== */
-function resolveRole(subject: Pick<Session, "role"> | UserRole | string): UserRole {
+function resolveRole(subject: Pick<Session,"role"> | UserRole | string): UserRole {
   if (subject && typeof subject === "object" && "role" in subject) {
     const role = (subject as any).role;
     return normRoleMaybe(role) ?? "BARBER";
@@ -136,24 +140,24 @@ function resolveRole(subject: Pick<Session, "role"> | UserRole | string): UserRo
 }
 
 export function hasRole(
-  subject: Pick<Session, "role"> | UserRole | string,
+  subject: Pick<Session,"role"> | UserRole | string,
   roles: UserRole[]
 ): boolean {
   const r = resolveRole(subject);
   return roles.includes(r);
 }
 
-export function isSuperAdmin(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isSuperAdmin(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "SUPERADMIN";
 }
 
-export function isAdmin(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isAdmin(subject: Pick<Session,"role"> | UserRole | string): boolean {
   const r = resolveRole(subject);
   return r === "ADMIN" || r === "OWNER" || r === "SUPERADMIN";
 }
-export function isOwner(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isOwner(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "OWNER";
 }
-export function isBarber(subject: Pick<Session, "role"> | UserRole | string): boolean {
+export function isBarber(subject: Pick<Session,"role"> | UserRole | string): boolean {
   return resolveRole(subject) === "BARBER";
 }
