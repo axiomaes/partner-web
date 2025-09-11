@@ -1,6 +1,5 @@
-// partner-web/src/pages/CustomerDetail.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import {
   getCustomerRewards,
@@ -28,7 +27,7 @@ export type Reward = {
 function fmt(d?: string | null) {
   if (!d) return "—";
   const dt = new Date(d);
-  return isNaN(dt.getTime()) ? d : dt.toLocaleString();
+  return isNaN(dt.getTime()) ? d : dt.toLocaleString("es-ES");
 }
 function fmtDDMM(iso?: string | null) {
   if (!iso) return "—";
@@ -88,10 +87,7 @@ export default function CustomerDetail() {
 
   // ⭐ NUEVO: KPIs y reglas
   const totalVisits = orderedVisits.length;
-  const review50AlreadyIssued = useMemo(
-    () => rewards.some((r) => isReview50Reward(r)),
-    [rewards]
-  );
+  const review50AlreadyIssued = useMemo(() => rewards.some((r) => isReview50Reward(r)), [rewards]);
   const review50AlreadyRedeemed = useMemo(
     () => rewards.some((r) => isReview50Reward(r) && r.status === "REDEEMED"),
     [rewards]
@@ -111,11 +107,7 @@ export default function CustomerDetail() {
     setErr("");
 
     (async () => {
-      const [c, r, v] = await Promise.allSettled([
-        getCustomer(id),
-        getCustomerRewards(id),
-        getCustomerVisits(id),
-      ]);
+      const [c, r, v] = await Promise.allSettled([getCustomer(id), getCustomerRewards(id), getCustomerVisits(id)]);
 
       if (!alive) return;
 
@@ -135,7 +127,9 @@ export default function CustomerDetail() {
       setLoading(false);
     })();
 
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [id]);
 
   async function reloadVisitsAndRewards() {
@@ -259,7 +253,7 @@ export default function CustomerDetail() {
   return (
     <AppLayout title={headerTitle} subtitle="Detalle del cliente">
       {err && (
-        <div className="alert alert-warning mb-4">
+        <div className="alert alert-warning mb-4" aria-live="polite">
           <span>{err}</span>
         </div>
       )}
@@ -292,13 +286,21 @@ export default function CustomerDetail() {
 
       {/* Resumen corto */}
       <div className="mb-4 text-sm opacity-80">
-        Total visitas: <b>{totalVisits}</b> ·
-        {" "}
+        Total visitas: <b>{totalVisits}</b> ·{" "}
         Reseña 50%: {review50AlreadyRedeemed ? <b>canjeada</b> : review50AlreadyIssued ? "pendiente" : "no emitida"}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver al listado</Link>
+        {/* ← Volver robusto: historial o fallback al listado */}
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? nav(-1) : nav("/app/customers"))}
+          className="btn btn-ghost btn-sm"
+          title="Volver"
+        >
+          ← Volver
+        </button>
+
         <button
           onClick={onAddVisit}
           className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
@@ -350,9 +352,7 @@ export default function CustomerDetail() {
                         ].join(" ")}
                       >
                         {filled ? (
-                          <span className="text-sm font-medium text-base-content">
-                            {fmtDDMM(v.visitedAt)}
-                          </span>
+                          <span className="text-sm font-medium text-base-content">{fmtDDMM(v.visitedAt)}</span>
                         ) : (
                           <span className="text-xs text-base-content/50">—</span>
                         )}
@@ -368,7 +368,11 @@ export default function CustomerDetail() {
                 </span>
                 {canEditPunch && (
                   <>
-                    <button onClick={onAddVisit} className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`} disabled={addingVisit}>
+                    <button
+                      onClick={onAddVisit}
+                      className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`}
+                      disabled={addingVisit}
+                    >
                       {addingVisit ? "" : "+ Añadir visita (hoy)"}
                     </button>
                     <button
@@ -440,7 +444,7 @@ export default function CustomerDetail() {
                       {rewards.map((r) => (
                         <tr key={r.id}>
                           <td className="text-xs">
-                            {isReview50Reward(r) ? "Reseña 50%" : isFree10Reward(r) ? "Gratis x10" : (r.kind || "—")}
+                            {isReview50Reward(r) ? "Reseña 50%" : isFree10Reward(r) ? "Gratis x10" : r.kind || "—"}
                           </td>
                           <td>
                             {r.status === "REDEEMED" ? (
@@ -484,9 +488,7 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {!admin && (
-        <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>
-      )}
+      {!admin && <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>}
     </AppLayout>
   );
 }
