@@ -1,3 +1,4 @@
+// src/AppRouter.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
@@ -13,8 +14,7 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import AdminPanel from "./pages/AdminPanel";          // 👈 RECUPERADO
-import Dashboard from "./pages/Dashboard";
+import AdminPanel from "./pages/AdminPanel";          // 👈 Panel con tarjetas
 import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
@@ -26,6 +26,7 @@ function AlreadyLoggedRedirect() {
   const s = useSession();
   if (!s.ready) return null;
   if (s.token) {
+    // SUPERADMIN -> /cpanel ; resto -> /app
     return <Navigate to={isSuperAdmin(s) ? "/cpanel" : "/app"} replace />;
   }
   return null;
@@ -70,13 +71,13 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* 👇 si es admin/owner/superadmin, lo llevamos al AdminPanel */}
+              {/* Si es ADMIN/OWNER/SUPERADMIN → AdminPanel; si no, al check-in */}
               {isAdmin(s) ? <Navigate to="/app/admin" replace /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
         />
 
-        {/* 👇 Ruta visible del AdminPanel */}
+        {/* AdminPanel visible */}
         <Route
           path="/app/admin"
           element={
