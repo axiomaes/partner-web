@@ -10,7 +10,7 @@ import {
   deleteCustomer,
   getCustomer,
   type CustomerLite,
-  api, // 👈 para canjear la recompensa y borrar visitas
+  api,
 } from "@/shared/api";
 import { useSession, isAdmin } from "@/shared/auth";
 
@@ -21,6 +21,8 @@ export type Reward = {
   redeemedAt?: string | null;
   note?: string | null;
   status: "PENDING" | "REDEEMED" | "EXPIRED";
+  // ⭐ NUEVO: si el backend lo envía, mejor. Si no, lo inferimos por note.
+  kind?: "GOOGLE_REVIEW_50" | "FREE_SERVICE_10" | string;
 };
 
 function fmt(d?: string | null) {
@@ -33,6 +35,20 @@ function fmtDDMM(iso?: string | null) {
   const dt = new Date(iso);
   if (isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+}
+
+// ⭐ NUEVO: helpers para reconocer recompensas por su nota/kind
+function isReview50Reward(r: Reward) {
+  const k = (r.kind || "").toUpperCase();
+  if (k === "GOOGLE_REVIEW_50") return true;
+  const n = (r.note || "").toLowerCase();
+  return n.includes("google") && (n.includes("50") || n.includes("descuento"));
+}
+function isFree10Reward(r: Reward) {
+  const k = (r.kind || "").toUpperCase();
+  if (k === "FREE_SERVICE_10") return true;
+  const n = (r.note || "").toLowerCase();
+  return n.includes("gratis") || n.includes("10 visitas") || n.includes("free");
 }
 
 export default function CustomerDetail() {
@@ -61,19 +77,32 @@ export default function CustomerDetail() {
     return `Cliente — ${customer?.name || fallback}`;
   }, [id, customer]);
 
-  // Para la tarjeta: nº casillas y columnas (horizontal)
   const CARD_SLOTS = 10;
   const CARD_COLS = 5;
 
-  // Visitas ordenadas (antiguas → recientes) y recorte a la tarjeta
   const orderedVisits = useMemo(
     () => [...visits].sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime()),
     [visits]
   );
-  const recentForCard = useMemo(
-    () => orderedVisits.slice(-CARD_SLOTS),
-    [orderedVisits]
+  const recentForCard = useMemo(() => orderedVisits.slice(-CARD_SLOTS), [orderedVisits]);
+
+  // ⭐ NUEVO: KPIs y reglas
+  const totalVisits = orderedVisits.length;
+  const review50AlreadyIssued = useMemo(
+    () => rewards.some((r) => isReview50Reward(r)),
+    [rewards]
   );
+  const review50AlreadyRedeemed = useMemo(
+    () => rewards.some((r) => isReview50Reward(r) && r.status === "REDEEMED"),
+    [rewards]
+  );
+  const free10Pending = useMemo(() => {
+    // cada múltiplo de 10 visitas -> 1 recompensa FREE_SERVICE_10
+    if (totalVisits < 10) return false;
+    const expectedCount = Math.floor(totalVisits / 10);
+    const issuedCount = rewards.filter((r) => isFree10Reward(r)).length;
+    return issuedCount < expectedCount;
+  }, [totalVisits, rewards]);
 
   useEffect(() => {
     if (!id) return;
@@ -106,9 +135,7 @@ export default function CustomerDetail() {
       setLoading(false);
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [id]);
 
   async function reloadVisitsAndRewards() {
@@ -123,10 +150,9 @@ export default function CustomerDetail() {
     try {
       setAddingVisit(true);
       await addVisit(id, "Visita manual");
-      await reloadVisitsAndRewards(); // refresca también recompensas por si se emite una
+      await reloadVisitsAndRewards();
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
+      const msg = e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
       setErr(msg);
     } finally {
       setAddingVisit(false);
@@ -141,8 +167,7 @@ export default function CustomerDetail() {
       await api.delete(`/customers/${id}/visits/${last.id}`);
       await reloadVisitsAndRewards();
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message || e?.message || "No se pudo deshacer la última visita.";
+      const msg = e?.response?.data?.message || e?.message || "No se pudo deshacer la última visita.";
       setErr(msg);
     } finally {
       setUndoing(false);
@@ -156,8 +181,7 @@ export default function CustomerDetail() {
       await resendCustomerQr(id);
       alert("QR reenviado (si el proveedor está configurado).");
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.";
+      const msg = e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.";
       setErr(msg);
     } finally {
       setSendingQr(false);
@@ -176,14 +200,38 @@ export default function CustomerDetail() {
     try {
       setRedeemingId(rewardId);
       await api.post(`/customers/${id}/rewards/redeem`, { rewardId });
-      const r = await getCustomerRewards(id);
-      setRewards(Array.isArray(r) ? (r as Reward[]) : []);
+      await reloadVisitsAndRewards();
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message || e?.message || "No se pudo canjear la recompensa.";
+      const msg = e?.response?.data?.message || e?.message || "No se pudo canjear la recompensa.";
       setErr(msg);
     } finally {
       setRedeemingId(null);
+    }
+  }
+
+  // ⭐ NUEVO: emitir recompensas desde UI si tu API ya lo soporta
+  async function issueReview50() {
+    if (!id) return;
+    try {
+      await api.post(`/customers/${id}/rewards/issue`, {
+        kind: "GOOGLE_REVIEW_50",
+        note: "50% descuento por reseña en Google",
+      });
+      await reloadVisitsAndRewards();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "No se pudo emitir la recompensa de reseña.");
+    }
+  }
+  async function issueFree10() {
+    if (!id) return;
+    try {
+      await api.post(`/customers/${id}/rewards/issue`, {
+        kind: "FREE_SERVICE_10",
+        note: "Servicio gratis por 10 visitas",
+      });
+      await reloadVisitsAndRewards();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "No se pudo emitir la recompensa de 10 visitas.");
     }
   }
 
@@ -216,11 +264,41 @@ export default function CustomerDetail() {
         </div>
       )}
 
+      {/* ⭐ NUEVO: Banners de reglas */}
+      {!review50AlreadyIssued && (
+        <div className="alert alert-info mb-3">
+          <div>
+            <b>Promo reseña en Google:</b> si el cliente deja una reseña, obtiene <b>50% de descuento</b> (una sola vez).
+          </div>
+          {canRedeem && (
+            <button className="btn btn-sm btn-primary mt-2" onClick={issueReview50}>
+              Emitir recompensa 50% (manual)
+            </button>
+          )}
+        </div>
+      )}
+      {free10Pending && (
+        <div className="alert alert-success mb-3">
+          <div>
+            ¡Hito alcanzado! <b>{totalVisits}</b> visitas ⇒ falta emitir <b>servicio gratis</b> por las 10 visitas.
+          </div>
+          {canRedeem && (
+            <button className="btn btn-sm btn-primary mt-2" onClick={issueFree10}>
+              Emitir “Servicio gratis”
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Resumen corto */}
+      <div className="mb-4 text-sm opacity-80">
+        Total visitas: <b>{totalVisits}</b> ·
+        {" "}
+        Reseña 50%: {review50AlreadyRedeemed ? <b>canjeada</b> : review50AlreadyIssued ? "pendiente" : "no emitida"}
+      </div>
+
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-ghost btn-sm">
-          ← Volver al listado
-        </Link>
-        {/* Dejo visible este botón general; también hay controles dentro de la tarjeta */}
+        <Link to="/app/customers" className="btn btn-ghost btn-sm">← Volver al listado</Link>
         <button
           onClick={onAddVisit}
           className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
@@ -254,21 +332,14 @@ export default function CustomerDetail() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {/* Tarjeta de visitas horizontal (tipo punch-card) */}
+          {/* Tarjeta de visitas */}
           <div className="card bg-base-100 shadow">
             <div className="card-body">
               <h3 className="card-title">Tarjeta de visitas</h3>
-
-              <div
-                className="rounded-2xl border border-base-300 bg-base-200 p-3"
-                style={{}}
-              >
-                <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${CARD_COLS}, minmax(0,1fr))` }}
-                >
+              <div className="rounded-2xl border border-base-300 bg-base-200 p-3">
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${CARD_COLS}, minmax(0,1fr))` }}>
                   {Array.from({ length: CARD_SLOTS }).map((_, i) => {
-                    const v = recentForCard[i]; // i = 0..CARD_SLOTS-1 (antiguas→recientes)
+                    const v = recentForCard[i];
                     const filled = !!v;
                     return (
                       <div
@@ -297,11 +368,7 @@ export default function CustomerDetail() {
                 </span>
                 {canEditPunch && (
                   <>
-                    <button
-                      onClick={onAddVisit}
-                      className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`}
-                      disabled={addingVisit}
-                    >
+                    <button onClick={onAddVisit} className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`} disabled={addingVisit}>
                       {addingVisit ? "" : "+ Añadir visita (hoy)"}
                     </button>
                     <button
@@ -315,15 +382,13 @@ export default function CustomerDetail() {
                   </>
                 )}
                 {!canEditPunch && (
-                  <span className="text-xs opacity-60">
-                    Solo ADMIN / BARBER / OWNER / SUPERADMIN pueden editar visitas.
-                  </span>
+                  <span className="text-xs opacity-60">Solo ADMIN / BARBER / OWNER / SUPERADMIN pueden editar visitas.</span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Visitas (tabla detalle) */}
+          {/* Visitas tabla */}
           <div className="card bg-base-100 shadow">
             <div className="card-body">
               <h3 className="card-title">Visitas</h3>
@@ -363,6 +428,7 @@ export default function CustomerDetail() {
                   <table className="table table-compact">
                     <thead>
                       <tr>
+                        <th>Tipo</th>
                         <th>Estado</th>
                         <th>Emitida</th>
                         <th>Canjeada</th>
@@ -373,13 +439,16 @@ export default function CustomerDetail() {
                     <tbody>
                       {rewards.map((r) => (
                         <tr key={r.id}>
+                          <td className="text-xs">
+                            {isReview50Reward(r) ? "Reseña 50%" : isFree10Reward(r) ? "Gratis x10" : (r.kind || "—")}
+                          </td>
                           <td>
                             {r.status === "REDEEMED" ? (
                               <span className="badge badge-success gap-1">✓ Canjeada</span>
                             ) : r.status === "PENDING" ? (
-                              <span className="badge badge-outline">PENDING</span>
+                              <span className="badge badge-outline">PENDIENTE</span>
                             ) : (
-                              <span className="badge">EXPIRED</span>
+                              <span className="badge">EXPIRADA</span>
                             )}
                           </td>
                           <td>{fmt(r.issuedAt)}</td>
@@ -416,9 +485,7 @@ export default function CustomerDetail() {
       )}
 
       {!admin && (
-        <p className="text-xs opacity-60 mt-6">
-          Algunas columnas pueden estar ocultas según tu rol.
-        </p>
+        <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>
       )}
     </AppLayout>
   );
