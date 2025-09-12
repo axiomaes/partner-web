@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 import StaffNew from "./pages/StaffNew";
+import StaffCheckin from "./pages/StaffCheckin"; // 👈 añadido
 
 // CPanel (superadmin)
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
@@ -21,7 +22,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ProtectedCpanelRoute from "./components/ProtectedCpanelRoute";
 
 import { useSession, isSuperAdmin, clearSession } from "@/shared/auth";
-import { postLoginPathByRole } from "@/shared/api"; // si no lo tienes, puedes quitar este import
+import { postLoginPathByRole } from "@/shared/api";
 
 function Header({
   isAuth,
@@ -62,6 +63,9 @@ function Header({
               <NavLink to="/app" className={navClass}>
                 Panel
               </NavLink>
+              <NavLink to="/staff/checkin" className={navClass}>
+                Check-in
+              </NavLink>
               {isSuper && (
                 <NavLink to="/cpanel" className={navClass}>
                   CPanel
@@ -97,7 +101,6 @@ export default function App(): JSX.Element {
   const s = useSession();
   const nav = useNavigate();
 
-  // Evita “parpadeo” por redirecciones hasta que la sesión esté hidratada
   if (!s.ready) {
     return (
       <div className="min-h-dvh grid place-items-center bg-brand-cream">
@@ -111,7 +114,6 @@ export default function App(): JSX.Element {
 
   const handleLogout = () => {
     clearSession();
-    // también dejamos que el interceptor de api.ts limpie si hace falta
     nav("/login", { replace: true });
     setOpen(() => false);
   };
@@ -133,6 +135,9 @@ export default function App(): JSX.Element {
                 <NavLink to="/app" className={({ isActive }) => (isActive ? "nav-link-active" : "nav-link")} onClick={() => setOpen(false)}>
                   Panel
                 </NavLink>
+                <NavLink to="/staff/checkin" className={({ isActive }) => (isActive ? "nav-link-active" : "nav-link")} onClick={() => setOpen(false)}>
+                  Check-in
+                </NavLink>
                 {isSuper && (
                   <NavLink to="/cpanel" className={({ isActive }) => (isActive ? "nav-link-active" : "nav-link")} onClick={() => setOpen(false)}>
                     CPanel
@@ -150,14 +155,7 @@ export default function App(): JSX.Element {
       {/* CONTENIDO */}
       <main className="flex-1 container-app py-6 sm:py-8">
         <Routes>
-          {/*
-            ✅ Primera pantalla = Login
-            Si ya estás autenticado y visitas /login o /, redirigimos según el rol para comodidad.
-          */}
-          <Route
-            path="/"
-            element={<Navigate to="/login" replace />}
-          />
+          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route
             path="/login"
             element={
@@ -167,63 +165,23 @@ export default function App(): JSX.Element {
             }
           />
 
-          {/* Público portal OTP */}
+          {/* Portal clientes */}
           <Route path="/customer-auth" element={<CustomerOTP />} />
           <Route path="/portal" element={<CustomerOTP />} />
-
           <Route path="/unauthorized" element={<Unauthorized />} />
 
-          {/* Panel negocio (OWNER/ADMIN/BARBER) */}
-          <Route
-            path="/app"
-            element={
-              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/customers"
-            element={
-              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
-                <CustomersNew />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/customers/new"
-            element={
-              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
-                <CustomersNew />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/customers/:id"
-            element={
-              <ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}>
-                <CustomerDetail />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/staff/new"
-            element={
-              <ProtectedRoute roles={["ADMIN"]}>
-                <StaffNew />
-              </ProtectedRoute>
-            }
-          />
+          {/* Panel negocio */}
+          <Route path="/app" element={<ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}><Dashboard /></ProtectedRoute>} />
+          <Route path="/app/customers" element={<ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}><CustomersNew /></ProtectedRoute>} />
+          <Route path="/app/customers/new" element={<ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}><CustomersNew /></ProtectedRoute>} />
+          <Route path="/app/customers/:id" element={<ProtectedRoute roles={["OWNER", "ADMIN", "BARBER"]}><CustomerDetail /></ProtectedRoute>} />
+          <Route path="/app/staff/new" element={<ProtectedRoute roles={["ADMIN"]}><StaffNew /></ProtectedRoute>} />
+
+          {/* Staff Check-in */}
+          <Route path="/staff/checkin" element={<ProtectedRoute roles={["OWNER", "ADMIN", "BARBER", "SUPERADMIN"]}><StaffCheckin /></ProtectedRoute>} />
 
           {/* CPanel súperadmin */}
-          <Route
-            path="/cpanel/*"
-            element={
-              <ProtectedCpanelRoute>
-                <CPanelAdminDashboard />
-              </ProtectedCpanelRoute>
-            }
-          />
+          <Route path="/cpanel/*" element={<ProtectedCpanelRoute><CPanelAdminDashboard /></ProtectedCpanelRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/login" replace />} />
