@@ -17,7 +17,6 @@ export default function Dashboard() {
   const s = useSession();
   const first = (s.name || s.email || "").split(" ")[0] || "¡hola!";
 
-  // Permisos (según helpers actuales)
   const adminOrAbove = isAdmin(s.role); // ADMIN | OWNER | SUPERADMIN
   const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role) || isAdmin(s.role);
 
@@ -38,22 +37,12 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Panel" subtitle="Resumen general">
-      {/* Accesos rápidos – todas rutas existen en tu AppRouter actual */}
+      {/* Accesos rápidos */}
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-primary btn-sm" aria-label="Listado de clientes">
-          Listado de clientes
-        </Link>
-        <Link to="/app/customers/new" className="btn btn-outline btn-sm" aria-label="Crear cliente">
-          Crear cliente
-        </Link>
-        <Link to="/staff/checkin" className="btn btn-outline btn-sm" aria-label="Escanear QR">
-          Escanear QR
-        </Link>
-        {ownerOrAbove && (
-          <Link to="/app/admin" className="btn btn-outline btn-sm" aria-label="Gestionar staff">
-            Gestionar staff
-          </Link>
-        )}
+        <Link to="/app/customers" className="btn btn-primary btn-sm">Listado de clientes</Link>
+        <Link to="/app/customers/new" className="btn btn-outline btn-sm">Crear cliente</Link>
+        <Link to="/staff/checkin" className="btn btn-outline btn-sm">Escanear QR</Link>
+        {ownerOrAbove && <Link to="/app/admin#staff" className="btn btn-outline btn-sm">Gestionar staff</Link>}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -62,7 +51,7 @@ export default function Dashboard() {
           <div className="card-body">
             <h3 className="card-title">Bienvenido, {first}</h3>
             <p className="opacity-70 text-sm">
-              Usa los accesos rápidos de arriba para gestionar clientes, crear nuevos,
+              Usa los accesos rápidos para gestionar clientes, crear nuevos,
               escanear QR en el puesto y (si eres OWNER/ADMIN) administrar tu equipo.
             </p>
           </div>
@@ -78,14 +67,14 @@ export default function Dashboard() {
               </span>
             </div>
             <div className="text-sm space-y-1">
-              <div><span className="opacity-70">Emisor:</span> {wa?.from ? <span className="font-mono">{wa.from}</span> : "—"}</div>
+              <div><span className="opacity-70">Emisor:</span> {wa?.from ?? "—"}</div>
               <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
               <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
               <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
             </div>
             {adminOrAbove && (
               <div className="card-actions mt-3">
-                <Link to="/app/customers" className="btn btn-sm btn-primary" aria-label="Reenviar QR desde clientes">
+                <Link to="/app/customers" className="btn btn-sm btn-primary">
                   Reenviar QR (desde clientes)
                 </Link>
               </div>
@@ -93,39 +82,29 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tarjeta Clientes */}
+        {/* Cliente – accesos */}
         <div className="card bg-base-100 shadow lg:col-span-2">
           <div className="card-body">
             <h3 className="card-title">Clientes</h3>
             <p className="text-sm opacity-70">
-              Gestiona el listado, crea clientes y accede al detalle para sumar visitas o canjear recompensas.
+              Abre el listado, crea clientes o escanea QR para registrar visitas.
             </p>
             <div className="join">
-              <Link to="/app/customers" className="btn btn-primary join-item" aria-label="Abrir listado de clientes">
-                Abrir listado
-              </Link>
-              <Link to="/app/customers/new" className="btn btn-outline join-item" aria-label="Crear cliente">
-                Crear cliente
-              </Link>
-              <Link to="/staff/checkin" className="btn btn-outline join-item" aria-label="Escanear QR">
-                Escanear QR
-              </Link>
+              <Link to="/app/customers" className="btn btn-primary join-item">Abrir listado</Link>
+              <Link to="/app/customers/new" className="btn btn-outline join-item">Crear cliente</Link>
+              <Link to="/staff/checkin" className="btn btn-outline join-item">Escanear QR</Link>
             </div>
           </div>
         </div>
 
-        {/* Tarjeta Staff (enlace operativo al AdminPanel) */}
+        {/* Staff */}
         {ownerOrAbove && (
           <div className="card bg-base-100 shadow lg:col-span-2">
-            <div className="card-body">
+            <div className="card-body" id="staff">
               <h3 className="card-title">Equipo (staff)</h3>
-              <p className="text-sm opacity-70">
-                Como OWNER/ADMIN puedes crear y gestionar cuentas de tu equipo.
-              </p>
+              <p className="text-sm opacity-70">Gestiona cuentas de tu equipo desde el panel.</p>
               <div className="join">
-                <Link to="/app/admin" className="btn btn-ghost join-item" aria-label="Abrir gestión de usuarios">
-                  Abrir gestión de usuarios
-                </Link>
+                <Link to="/app/admin#staff" className="btn btn-ghost join-item">Abrir gestión de usuarios</Link>
                 <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
               </div>
             </div>
