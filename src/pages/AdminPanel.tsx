@@ -1,9 +1,8 @@
-// partner-web/src/pages/AdminPanel.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
-import { api, addVisitByPhone, resendCustomerQr } from "@/shared/api";
-import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
+import { api, addVisitByPhone, resendCustomerQr, getWaStatus, type WaStatus } from "@/shared/api";
+import { useSession, isAdmin } from "@/shared/auth";
 
 type Customer = {
   id: string;
@@ -12,27 +11,14 @@ type Customer = {
   email?: string | null;
 };
 
-type WaStatus = {
-  enabled?: boolean;
-  from?: string | null;
-  dailyLimit?: number | null;
-  ratePerMinute?: number | null;
-  monthlyCap?: number | null;
-};
-
 export default function AdminPanel() {
   const nav = useNavigate();
   const { role } = useSession();
+  const admin = isAdmin(role);
 
-  // ADMIN | OWNER | SUPERADMIN (según helpers actuales)
-  const adminOrAbove = isAdmin(role);
-  // Habilitar reenvío de WhatsApp explícitamente para SUPERADMIN/OWNER/ADMIN
-  const canSendWa = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
-
-  // Guard “blando”: si no es admin/owner/superadmin, lo mando a check-in (staff)
   useEffect(() => {
-    if (!adminOrAbove) nav("/staff/checkin", { replace: true });
-  }, [adminOrAbove, nav]);
+    if (!admin) nav("/app", { replace: true });
+  }, [admin, nav]);
 
   // ----- Estado: quick points -----
   const [qpPhone, setQpPhone] = useState("+34");
@@ -53,21 +39,15 @@ export default function AdminPanel() {
     }
   };
 
-  // ----- Estado: WhatsApp (solo info) -----
-  const [wa, setWa] = useState<WaStatus | null>(null);
+  // ----- Estado: WhatsApp (descubrimiento silencioso) -----
+  const [wa, setWa] = useState<WaStatus | null | "NA">("NA");
   useEffect(() => {
     let mounted = true;
-    api
-      .get("/wa/status", { validateStatus: () => true })
-      .then((r) => {
-        if (!mounted) return;
-        if (r.status >= 200 && r.status < 300) setWa(r.data as WaStatus);
-        else setWa(null);
-      })
-      .catch(() => mounted && setWa(null));
-    return () => {
-      mounted = false;
-    };
+    (async () => {
+      const st = await getWaStatus();
+      if (mounted) setWa(st ?? "NA");
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // ----- Estado: clientes -----
@@ -91,9 +71,7 @@ export default function AdminPanel() {
       .finally(() => {
         if (mounted) setLoading(false);
       });
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -110,7 +88,6 @@ export default function AdminPanel() {
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const onResend = async (id: string) => {
-    if (!canSendWa) return;
     setResendMsg((m) => ({ ...m, [id]: "Enviando…" }));
     try {
       const r = await resendCustomerQr(id);
@@ -122,35 +99,26 @@ export default function AdminPanel() {
   };
 
   const WaCard = () => {
-    const enabled = !!wa?.enabled;
+    const enabled = wa !== "NA" && !!wa?.enabled;
     return (
       <div className="card bg-base-100 shadow-sm">
         <div className="card-body">
           <div className="flex items-center justify-between gap-2">
             <h2 className="card-title">WhatsApp</h2>
             <span className={`badge ${enabled ? "badge-success" : "badge-ghost"}`}>
-              {enabled ? "Activo" : "Desactivado"}
+              {wa === "NA" ? "No disponible" : enabled ? "Activo" : "Desactivado"}
             </span>
           </div>
-          <div className="text-sm space-y-1">
-            <div>
-              <span className="opacity-70">Emisor:</span>{" "}
-              {wa?.from ? (
-                <a
-                  className="link"
-                  href={`https://${wa.from.replace(/^whatsapp:/, "")}`}
-                  onClick={(e) => e.preventDefault()}
-                >
-                  {wa.from}
-                </a>
-              ) : (
-                "—"
-              )}
+          {wa === "NA" ? (
+            <div className="text-sm opacity-70">Esta API no expone estado de WhatsApp.</div>
+          ) : (
+            <div className="text-sm space-y-1">
+              <div><span className="opacity-70">Emisor:</span> {wa?.from ?? "—"}</div>
+              <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
+              <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
+              <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
             </div>
-            <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
-            <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
-            <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
-          </div>
+          )}
         </div>
       </div>
     );
@@ -158,13 +126,6 @@ export default function AdminPanel() {
 
   return (
     <AppLayout title="La Cubierta Barbería — Panel del Administrador" subtitle="Herramientas de negocio">
-      {/* Navegación rápida */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-primary btn-sm">Listado de clientes</Link>
-        <Link to="/app/customers/new" className="btn btn-outline btn-sm">Crear cliente</Link>
-        <Link to="/staff/checkin" className="btn btn-outline btn-sm">Escanear QR</Link>
-      </div>
-
       <div className="grid lg:grid-cols-2 gap-6">
         {/* QUICK POINTS */}
         <div className="card bg-base-100 shadow-sm">
@@ -172,9 +133,7 @@ export default function AdminPanel() {
             <h2 className="card-title">Sumar puntos por teléfono</h2>
             <form onSubmit={onQuickPoints} className="space-y-3">
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Teléfono</span>
-                </label>
+                <label className="label"><span className="label-text">Teléfono</span></label>
                 <input
                   className="input input-bordered"
                   type="tel"
@@ -190,9 +149,7 @@ export default function AdminPanel() {
               </div>
 
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Notas (opcional)</span>
-                </label>
+                <label className="label"><span className="label-text">Notas (opcional)</span></label>
                 <input
                   className="input input-bordered"
                   placeholder="Ej.: Puntos manuales"
@@ -211,22 +168,18 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* CREAR CLIENTE */}
+        {/* CREAR CLIENTE (tarjeta separada) */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title">Crear cliente</h2>
-            <p className="text-sm opacity-70">
-              Registra un cliente nuevo y envíale su QR de fidelización.
-            </p>
+            <p className="text-sm opacity-70">Registra un cliente nuevo y envíale su QR de fidelización.</p>
             <div className="card-actions">
-              <Link to="/app/customers/new" className="btn btn-outline">
-                Crear cliente
-              </Link>
+              <Link to="/app/customers/new" className="btn btn-outline">Crear cliente</Link>
             </div>
           </div>
         </div>
 
-        {/* WHATSApp STATUS */}
+        {/* WHATSAPP STATUS */}
         <WaCard />
 
         {/* CLIENTES */}
@@ -234,15 +187,11 @@ export default function AdminPanel() {
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h2 className="card-title">Clientes</h2>
-              <Link to="/app/customers" className="btn btn-ghost btn-sm">
-                Ver listado
-              </Link>
+              <Link to="/app/customers" className="btn btn-ghost btn-sm">Ver listado clásico</Link>
             </div>
 
             <div className="form-control">
-              <label className="label">
-                <span className="label-text">Buscar</span>
-              </label>
+              <label className="label"><span className="label-text">Buscar</span></label>
               <input
                 className="input input-bordered"
                 placeholder="Nombre, teléfono o email…"
@@ -252,13 +201,9 @@ export default function AdminPanel() {
             </div>
 
             {loading ? (
-              <div className="flex items-center gap-2">
-                <span className="loading loading-spinner" /> Cargando…
-              </div>
+              <div className="flex items-center gap-2"><span className="loading loading-spinner" /> Cargando…</div>
             ) : err ? (
-              <div className="alert alert-warning">
-                <span>{err}</span>
-              </div>
+              <div className="alert alert-warning"><span>{err}</span></div>
             ) : (
               <div className="overflow-x-auto rounded-box border border-base-300">
                 <table className="table table-compact w-full">
@@ -282,28 +227,18 @@ export default function AdminPanel() {
                         <td className="align-top hidden sm:table-cell">{c.email || "—"}</td>
                         <td className="align-top text-center">
                           <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                            <Link to={`/app/customers/${c.id}`} className="btn btn-info btn-sm w-28">
-                              Detalle
-                            </Link>
-                            <button
-                              className={`btn btn-info btn-sm w-28 ${!canSendWa ? "btn-disabled" : ""}`}
-                              onClick={() => canSendWa && onResend(c.id)}
-                              title={canSendWa ? "Reenviar QR por WhatsApp" : "No autorizado"}
-                            >
+                            <Link to={`/app/customers/${c.id}`} className="btn btn-info btn-sm w-28">Detalle</Link>
+                            <button className="btn btn-info btn-sm w-28" onClick={() => onResend(c.id)} title="Reenviar QR por WhatsApp">
                               Reenviar QR
                             </button>
                           </div>
-                          {resendMsg[c.id] && (
-                            <div className="text-xs mt-1 opacity-70">{resendMsg[c.id]}</div>
-                          )}
+                          {resendMsg[c.id] && <div className="text-xs mt-1 opacity-70">{resendMsg[c.id]}</div>}
                         </td>
                       </tr>
                     ))}
                     {!filtered.length && (
                       <tr>
-                        <td colSpan={4} className="text-sm opacity-70 p-4">
-                          Sin resultados
-                        </td>
+                        <td colSpan={4} className="text-sm opacity-70 p-4">Sin resultados</td>
                       </tr>
                     )}
                   </tbody>
@@ -318,13 +253,11 @@ export default function AdminPanel() {
           <div className="card-body">
             <h2 className="card-title">Equipo (staff)</h2>
             <p className="text-sm opacity-80">
-              Aquí podrás invitar y gestionar cuentas de staff. Si ya tienes un endpoint de
-              usuarios, podemos conectar este bloque de inmediato.
+              Aquí podrás invitar y gestionar cuentas de staff. Si ya tienes un endpoint de usuarios,
+              podemos conectar este bloque de inmediato.
             </p>
             <div className="join">
-              <Link to="/app/users" className="btn btn-ghost join-item">
-                Ir a Usuarios (si existe)
-              </Link>
+              <Link to="/app/users" className="btn btn-ghost join-item">Ir a Usuarios (si existe)</Link>
               <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
             </div>
           </div>
