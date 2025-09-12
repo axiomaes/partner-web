@@ -17,7 +17,7 @@ export default function Dashboard() {
   const s = useSession();
   const first = (s.name || s.email || "").split(" ")[0] || "¡hola!";
 
-  // Permisos
+  // Permisos (según helpers actuales)
   const adminOrAbove = isAdmin(s.role); // ADMIN | OWNER | SUPERADMIN
   const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role) || isAdmin(s.role);
 
@@ -38,7 +38,7 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Panel" subtitle="Resumen general">
-      {/* Accesos rápidos (todas rutas existentes en tu AppRouter) */}
+      {/* Accesos rápidos – todas rutas existen en tu AppRouter actual */}
       <div className="mb-4 flex flex-wrap gap-2">
         <Link to="/app/customers" className="btn btn-primary btn-sm" aria-label="Listado de clientes">
           Listado de clientes
@@ -49,12 +49,11 @@ export default function Dashboard() {
         <Link to="/staff/checkin" className="btn btn-outline btn-sm" aria-label="Escanear QR">
           Escanear QR
         </Link>
-        {/* Para gestión de staff, llevamos al AdminPanel y anclamos a la sección de staff */}
-        {ownerOrAbove ? (
-          <Link to="/app/admin#staff" className="btn btn-outline btn-sm" aria-label="Gestionar staff">
+        {ownerOrAbove && (
+          <Link to="/app/admin" className="btn btn-outline btn-sm" aria-label="Gestionar staff">
             Gestionar staff
           </Link>
-        ) : null}
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -115,16 +114,16 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tarjeta Staff (enlace operativo a AdminPanel) */}
+        {/* Tarjeta Staff (enlace operativo al AdminPanel) */}
         {ownerOrAbove && (
-          <div className="card bg-base-100 shadow lg:col-span-2" id="staff">
+          <div className="card bg-base-100 shadow lg:col-span-2">
             <div className="card-body">
               <h3 className="card-title">Equipo (staff)</h3>
               <p className="text-sm opacity-70">
                 Como OWNER/ADMIN puedes crear y gestionar cuentas de tu equipo.
               </p>
               <div className="join">
-                <Link to="/app/admin#staff" className="btn btn-ghost join-item" aria-label="Abrir gestión de usuarios">
+                <Link to="/app/admin" className="btn btn-ghost join-item" aria-label="Abrir gestión de usuarios">
                   Abrir gestión de usuarios
                 </Link>
                 <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
