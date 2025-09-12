@@ -5,17 +5,19 @@ import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
 import { api, publicCustomerQrUrl, addVisit } from "@/shared/api";
 
+/** ---- Tipos ---- */
 type Customer = {
   id: string;
   name?: string | null;
   phone?: string | null;
   email?: string | null;
-  birthday?: string | null; // YYYY-MM-DD
+  birthday?: string | null;  // YYYY-MM-DD
   visitsCount?: number | null;
   createdAt?: string | null;
   [k: string]: any;
 };
 
+/** ---- Helpers ---- */
 const maskPhone = (p?: string | null) => {
   if (!p) return "—";
   const d = p.replace(/\D/g, "");
@@ -29,7 +31,6 @@ const maskEmail = (e?: string | null) => {
   const u2 = u.length <= 2 ? "••" : u[0] + "••" + u.slice(-1);
   return `${u2}@${dom}`;
 };
-
 function isDuplicateVisitError(e: any): boolean {
   const msg = e?.response?.data?.message || e?.message || "";
   return e?.response?.status === 409 || /same\s*day|mismo\s*d[ií]a|already.*today/i.test(msg);
@@ -39,6 +40,17 @@ const waHref = (phone?: string | null, text?: string) => {
   const t = text || "¡Feliz cumpleaños! 🎉 Gracias por elegirnos.";
   return `https://wa.me/${digits}?text=${encodeURIComponent(t)}`;
 };
+
+/** Progreso dentro del ciclo de 10 visitas */
+function progress10(total?: number | null) {
+  const v = Math.max(0, Number(total || 0));
+  const cycle = v % 10; // 0..9
+  // Para pintar casillas: si v>0 y cycle===0 significa ciclo completo (10/10).
+  const filled = cycle === 0 && v > 0 ? 10 : cycle;
+  const to5 = Math.max(0, 5 - filled);
+  const to10 = Math.max(0, 10 - filled);
+  return { v, filled, to5, to10 };
+}
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -59,6 +71,7 @@ export default function CustomerDetail() {
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // override OWNER modal
   const [needsOverride, setNeedsOverride] = useState<null | { action: () => Promise<void> }>(null);
 
   useEffect(() => {
@@ -88,10 +101,20 @@ export default function CustomerDetail() {
       setBusy(true);
       await addVisit(id, "Visita registrada desde detalle");
       setMsg("✅ Visita registrada.");
+      // Refresco optimista del contador para actualizar la tarjeta
+      setC((old) => (old ? { ...old, visitsCount: (Number(old.visitsCount || 0) + 1) } : old));
+      // Si prefieres recargar del server:
+      // const r = await api.get(`/customers/${encodeURIComponent(id)}`);
+      // setC(r.data as Customer);
     } catch (e: any) {
       if (isDuplicateVisitError(e)) {
         setMsg("⚠️ Ya se registró una visita hoy. Requiere autorización del OWNER.");
-        setNeedsOverride({ action: async () => addVisit(id, "Visita (override OWNER)", { force: true }) });
+        setNeedsOverride({
+          action: async () => {
+            await addVisit(id, "Visita (override OWNER)", { force: true });
+            setC((old) => (old ? { ...old, visitsCount: (Number(old.visitsCount || 0) + 1) } : old));
+          },
+        });
       } else {
         setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo registrar la visita."));
       }
@@ -109,6 +132,7 @@ export default function CustomerDetail() {
   };
 
   const title = c?.name ? `Cliente · ${c.name}` : "Cliente";
+  const prog = progress10(c?.visitsCount);
 
   return (
     <AppLayout title={title} subtitle="Ficha del cliente y acciones rápidas.">
@@ -123,7 +147,6 @@ export default function CustomerDetail() {
         <Link to={`/staff/checkin?cid=${encodeURIComponent(id || "")}`} className="btn btn-outline">
           Abrir en Check-in
         </Link>
-        {/* Saludo WhatsApp visible para todos si hay teléfono */}
         {c?.phone && (
           <a className="btn btn-ghost" href={waHref(c.phone)} target="_blank" rel="noreferrer">
             Saludar por WhatsApp
@@ -204,7 +227,7 @@ export default function CustomerDetail() {
                   {c.birthday ? new Date(c.birthday + "T00:00:00").toLocaleDateString() : "—"}
                 </dd>
 
-                <dt className="opacity-70">Visitas</dt>
+                <dt className="opacity-70">Visitas totales</dt>
                 <dd className="text-right">{c.visitsCount ?? "—"}</dd>
 
                 <dt className="opacity-70">Alta</dt>
@@ -228,7 +251,7 @@ export default function CustomerDetail() {
           </div>
         </section>
 
-        {/* QR (la imagen la pueden ver todos los roles, como pediste) */}
+        {/* QR */}
         <section className="card bg-base-100 shadow-sm border border-base-200">
           <div className="card-body items-center text-center">
             <h3 className="card-title">QR del cliente</h3>
@@ -247,7 +270,6 @@ export default function CustomerDetail() {
                   />
                 </div>
                 <div className="join mt-4">
-                  {/* Abrir PNG solo para roles con permiso */}
                   {(isOwner(role) || isAdmin(role) || isSuperAdmin(role)) && (
                     <a className="btn btn-primary join-item" href={publicCustomerQrUrl(c.id)} target="_blank" rel="noreferrer">
                       Abrir PNG
@@ -257,6 +279,63 @@ export default function CustomerDetail() {
                 </div>
               </>
             )}
+          </div>
+        </section>
+
+        {/* Tarjeta de visitas (10 casillas) */}
+        <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
+          <div className="card-body">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="card-title">Tarjeta de visitas</h3>
+              <div className="text-sm opacity-70">Ciclo actual: {prog.filled}/10</div>
+            </div>
+
+            {/* Progresos 5 y 10 */}
+            <div className="mb-3 text-sm">
+              <span className={`badge mr-2 ${prog.filled >= 5 ? "badge-success" : "badge-ghost"}`}>
+                {prog.filled >= 5 ? "50% disponible" : `${5 - prog.filled} para 50%`}
+              </span>
+              <span className={`badge ${prog.filled >= 10 ? "badge-success" : "badge-ghost"}`}>
+                {prog.filled >= 10 ? "Gratis disponible" : `${10 - prog.filled} para gratis`}
+              </span>
+            </div>
+
+            {/* 10 casillas (2 filas de 5) */}
+            <div className="grid grid-cols-5 gap-3 max-w-xl">
+              {Array.from({ length: 10 }).map((_, i) => {
+                const filled = i < prog.filled;
+                return (
+                  <div
+                    key={i}
+                    className={`h-16 rounded-2xl border grid place-items-center text-xl font-semibold ${
+                      filled ? "bg-brand-primary text-white border-brand-primary" : "bg-base-200 border-base-300 text-base-content/40"
+                    }`}
+                  >
+                    {filled ? "★" : "—"}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Acciones de tarjeta */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                className={`btn btn-primary ${busy ? "loading" : ""}`}
+                disabled={!canAddVisit || busy}
+                onClick={tryRegister}
+              >
+                {busy ? "" : "Añadir visita (hoy)"}
+              </button>
+
+              {/* Botones de recompensas: placeholder manual; enlaza a tu flujo real si lo tienes */}
+              {prog.filled >= 5 && prog.filled < 10 && (
+                <button className="btn btn-outline">Emitir recompensa 50% (manual)</button>
+              )}
+              {prog.filled >= 10 && (
+                <button className="btn btn-outline">Emitir recompensa gratis (manual)</button>
+              )}
+              <span className="opacity-50 text-xs">* Las recompensas pueden integrarse con tu backend cuando quieras.</span>
+            </div>
           </div>
         </section>
       </div>
