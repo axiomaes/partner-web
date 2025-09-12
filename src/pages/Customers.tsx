@@ -1,5 +1,5 @@
 // src/pages/Customers.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
@@ -9,50 +9,53 @@ import {
   type CustomerLite,
 } from "@/shared/api";
 
-/** Tipos de fila (completamos opcionales por si no vienen) */
+/** ---- Tipos ---- */
 type Row = CustomerLite & {
   email?: string | null;
   visitsCount?: number;
   createdAt?: string;
 };
 
-/** Helpers de enmascarado para roles sin privilegio (BARBER) */
+/** ---- Helpers (enmascarado para BARBER) ---- */
 function maskPhone(p?: string | null) {
   if (!p) return "—";
-  const d = p.replace(/\D/g, "");
-  if (d.length <= 4) return "•••";
-  return `${d.slice(0, 2)}•••${d.slice(-2)}`;
+  const digits = p.replace(/\D/g, "");
+  if (digits.length <= 4) return "•••";
+  return `${digits.slice(0, 2)}•••${digits.slice(-2)}`;
 }
 function maskEmail(e?: string | null) {
   if (!e) return "—";
-  const [u, dom] = e.split("@");
+  const [user, dom] = e.split("@");
   if (!dom) return "—";
-  const u2 = u.length <= 2 ? "••" : u[0] + "••" + u.slice(-1);
-  return `${u2}@${dom}`;
+  const u = user.length <= 2 ? "••" : user[0] + "••" + user.slice(-1);
+  return `${u}@${dom}`;
 }
 
 export default function Customers() {
   const s = useSession();
   const role = s.role;
+
   const canSeeSensitive = useMemo(
     () => isAdmin(role) || isOwner(role) || isSuperAdmin(role),
     [role]
   );
 
+  /** ---- Estado ---- */
   const [q, setQ] = useState("");
   const [allRows, setAllRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [qrId, setQrId] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  /** Carga inicial: la firma real de listCustomers no acepta args */
+  /** ---- Carga inicial ---- */
   useEffect(() => {
     let live = true;
     (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const data = await listCustomers(); // ← sin parámetros
+        const data = await listCustomers(); // sin params según firma real
         if (!live) return;
         setAllRows((data || []) as Row[]);
       } catch (e: any) {
@@ -67,7 +70,7 @@ export default function Customers() {
     };
   }, []);
 
-  /** Filtro en cliente (nombre / teléfono / email / id) */
+  /** ---- Filtro en cliente ---- */
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return allRows;
@@ -79,6 +82,15 @@ export default function Customers() {
     );
   }, [allRows, q]);
 
+  /** ---- Utils ---- */
+  function copy(text: string) {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(text);
+      setTimeout(() => setCopied(null), 1200);
+    });
+  }
+
+  /** ---- Render ---- */
   return (
     <AppLayout title="Clientes" subtitle="Busca, abre el detalle y muestra el QR del cliente.">
       {/* Acciones + búsqueda */}
@@ -138,8 +150,21 @@ export default function Customers() {
               rows.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <div className="font-medium">{c.name || "Cliente"}</div>
-                    <div className="text-xs opacity-60">{c.id}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium">{c.name || "Cliente"}</div>
+                      {/* Botón copiar ID solo para admin/owner/superadmin */}
+                      {canSeeSensitive && (
+                        <button
+                          className="btn btn-ghost btn-xs"
+                          title={copied === c.id ? "Copiado" : "Copiar ID"}
+                          onClick={() => copy(c.id)}
+                        >
+                          {copied === c.id ? "✔" : "ID"}
+                        </button>
+                      )}
+                    </div>
+                    {/* 🔒 Ocultamos el ID/token en la UI pública */}
+                    {/* <div className="text-xs opacity-60">{c.id}</div> */}
                   </td>
                   <td className="hidden sm:table-cell">
                     {canSeeSensitive ? c.phone || "—" : maskPhone(c.phone)}
@@ -192,21 +217,27 @@ export default function Customers() {
                 }}
               />
             </div>
-            <div className="text-xs break-all bg-base-200 rounded p-2 mb-3">
+
+            {/* 🔒 Ocultamos la URL de texto del QR para todos */}
+            {/* <div className="text-xs break-all bg-base-200 rounded p-2 mb-3">
               {publicCustomerQrUrl(qrId)}
-            </div>
+            </div> */}
+
             <div className="modal-action">
               <button className="btn" onClick={() => setQrId(null)}>
                 Cerrar
               </button>
-              <a
-                className="btn btn-primary"
-                href={publicCustomerQrUrl(qrId)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Abrir PNG
-              </a>
+              {/* Solo ADMIN/OWNER/SUPERADMIN pueden abrir la URL del PNG */}
+              {canSeeSensitive && (
+                <a
+                  className="btn btn-primary"
+                  href={publicCustomerQrUrl(qrId)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Abrir PNG
+                </a>
+              )}
             </div>
           </div>
           <div className="modal-backdrop" onClick={() => setQrId(null)} />
