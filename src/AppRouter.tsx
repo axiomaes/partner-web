@@ -1,4 +1,3 @@
-// src/AppRouter.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
@@ -14,11 +13,13 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import Dashboard from "./pages/Dashboard";          // 👈 USAR Dashboard en /app
+import Dashboard from "./pages/Dashboard";          // /app → Dashboard
 import AdminPanel from "./pages/AdminPanel";
+import AdminUsers from "./pages/AdminUsers";        // 👈 existe en tu repo
 import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
+import Logout from "./pages/Logout";                // 👈 existe en tu repo
 
 /* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
@@ -43,7 +44,7 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Home */}
+        {/* Home pública */}
         <Route
           path="/"
           element={
@@ -54,14 +55,15 @@ export default function AppRouter() {
           }
         />
 
-        {/* Login staff */}
+        {/* Login / Logout */}
         <Route path="/login" element={<LoginStaff />} />
+        <Route path="/logout" element={<Logout />} />
 
         {/* Portal clientes */}
         <Route path="/portal" element={<CustomerOTP />} />
         <Route path="/portal/points" element={<PortalPoints />} />
 
-        {/* Staff check-in */}
+        {/* Staff check-in (siempre aquí, incluso para admin) */}
         <Route
           path="/staff/checkin"
           element={
@@ -76,7 +78,7 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* OWNER/ADMIN/SUPERADMIN ven Dashboard con accesos; BARBER a check-in */}
+              {/* OWNER/ADMIN/SUPERADMIN → Dashboard; BARBER → check-in */}
               {admin ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
@@ -88,6 +90,16 @@ export default function AppRouter() {
           element={
             <RouteGuard>
               <AdminPanel />
+            </RouteGuard>
+          }
+        />
+
+        {/* Gestión de usuarios (tienes AdminUsers.tsx) */}
+        <Route
+          path="/app/users"
+          element={
+            <RouteGuard>
+              <AdminUsers />
             </RouteGuard>
           }
         />
@@ -123,7 +135,11 @@ export default function AppRouter() {
           path="/cpanel/*"
           element={
             <RouteGuard>
-              {isSuperAdmin(s.role) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
+              {isSuperAdmin(s.role) ? (
+                <CPanelAdminDashboard />
+              ) : (
+                <Navigate to="/unauthorized" replace />
+              )}
             </RouteGuard>
           }
         />
