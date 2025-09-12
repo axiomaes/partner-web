@@ -46,47 +46,54 @@ export default function Dashboard() {
     };
   }, []);
 
+  // ---- Narrowing helpers (evitan acceder a .data fuera de "ok") ----
+  const waEnabled = wa.kind === "ok" ? !!wa.data.enabled : false;
+  const waBadgeClass =
+    wa.kind === "ok"
+      ? waEnabled
+        ? "badge-success"
+        : "badge-ghost"
+      : wa.kind === "err"
+      ? "badge-warning"
+      : "badge-ghost";
+
+  const waBadgeText =
+    wa.kind === "loading"
+      ? "Cargando…"
+      : wa.kind === "na"
+      ? "No disponible"
+      : wa.kind === "err"
+      ? "Error"
+      : waEnabled
+      ? "Activo"
+      : "Desactivado";
+
   return (
     <AppLayout title="Panel" subtitle="Resumen general">
       {/* ACCIONES RÁPIDAS (único lugar con botones de navegación) */}
       <div className="mb-6">
         <div className="bg-base-100 rounded-2xl border border-base-200 shadow-sm p-3 sm:p-4">
           <div className="flex flex-wrap gap-2">
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => nav("/app/customers")}
-            >
+            <button className="btn btn-primary btn-sm" onClick={() => nav("/app/customers")}>
               Listado de clientes
             </button>
             {canAdmin && (
-              <button
-                className="btn btn-outline btn-sm"
-                onClick={() => nav("/app/customers/new")}
-              >
+              <button className="btn btn-outline btn-sm" onClick={() => nav("/app/customers/new")}>
                 Crear cliente
               </button>
             )}
             {canStaff && (
-              <button
-                className="btn btn-outline btn-sm"
-                onClick={() => nav("/staff/checkin")}
-              >
+              <button className="btn btn-outline btn-sm" onClick={() => nav("/staff/checkin")}>
                 Escanear / Check-in
               </button>
             )}
             {canAdmin && (
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => nav("/app/admin")}
-              >
+              <button className="btn btn-ghost btn-sm" onClick={() => nav("/app/admin")}>
                 Herramientas del negocio
               </button>
             )}
             {canOwnerOrAbove && (
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => nav("/app/users")}
-              >
+              <button className="btn btn-ghost btn-sm" onClick={() => nav("/app/users")}>
                 Gestionar staff
               </button>
             )}
@@ -112,28 +119,7 @@ export default function Dashboard() {
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h3 className="card-title">WhatsApp</h3>
-              <span
-                className={
-                  "badge " +
-                  (wa.kind === "ok" && wa.data?.enabled
-                    ? "badge-success"
-                    : wa.kind === "na"
-                    ? "badge-ghost"
-                    : wa.kind === "err"
-                    ? "badge-warning"
-                    : "badge-ghost")
-                }
-              >
-                {wa.kind === "loading"
-                  ? "Cargando…"
-                  : wa.kind === "na"
-                  ? "No disponible"
-                  : wa.kind === "err"
-                  ? "Error"
-                  : wa.data.enabled
-                  ? "Activo"
-                  : "Desactivado"}
-              </span>
+              <span className={"badge " + waBadgeClass}>{waBadgeText}</span>
             </div>
 
             {/* Detalle */}
@@ -158,16 +144,14 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* CLIENTES (sin botones duplicados) */}
+        {/* CLIENTES */}
         <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
           <div className="card-body">
             <div className="flex items-start justify-between gap-2">
               <h3 className="card-title">Clientes</h3>
               <span className="badge badge-outline">Operativo</span>
             </div>
-            <p className="text-sm opacity-70">
-              Gestiona la base de clientes, registra visitas y consulta recompensas.
-            </p>
+            <p className="text-sm opacity-70">Gestiona la base de clientes, registra visitas y consulta recompensas.</p>
 
             <div className="grid sm:grid-cols-3 gap-3 mt-2">
               <div className="rounded-box border border-base-200 p-3">
