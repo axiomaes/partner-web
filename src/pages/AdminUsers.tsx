@@ -1,311 +1,156 @@
-// partner-web/src/pages/AdminUsers.tsx
+// src/pages/AdminUsers.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
-import { api } from "@/shared/api";
-import { useSession } from "@/shared/auth";
+import { createUser, listUsers, type UserRole } from "@/shared/api";
+import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
 
-type Role = "BARBER" | "ADMIN" | "OWNER" | "SUPERADMIN";
-type User = { id: string; email: string; role: Role; isActive?: boolean; createdAt?: string };
+type Row = { id: string; email: string; role: UserRole };
 
 export default function AdminUsers() {
-  const { role: myRole } = useSession();
+  const s = useSession();
+  const admin = isAdmin(s.role);
+  const owner = isOwner(s.role);
+  const superadmin = isSuperAdmin(s.role);
 
-  // Qué roles puede asignar el usuario actual (mirror de la regla del backend)
-  const assignableRoles: Role[] = useMemo(() => {
-    if (myRole === "SUPERADMIN") return ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"];
-    if (myRole === "OWNER") return ["BARBER", "OWNER"];
-    if (myRole === "ADMIN") return ["BARBER", "ADMIN"];
-    // BARBER u otros: solo lectura
-    return [];
-  }, [myRole]);
+  // Permisos: ADMIN solo puede crear BARBER; OWNER/SUPERADMIN pueden crear ADMIN o BARBER
+  const canCreateAdmin = owner || superadmin;
+  const canCreateBarber = admin || owner || superadmin;
+  const canCreateSomeone = canCreateAdmin || canCreateBarber;
 
-  const canWrite = assignableRoles.length > 0; // OWNER, ADMIN o SUPERADMIN
-
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [users, setUsers] = useState<User[]>([]);
-  const [q, setQ] = useState("");
 
-  // form crear
   const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [role, setRole] = useState<Role>(assignableRoles[0] ?? "BARBER");
-  const [creating, setCreating] = useState(false);
-  const [createMsg, setCreateMsg] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserRole>(canCreateAdmin ? "ADMIN" : "BARBER");
+  const [submitting, setSubmitting] = useState(false);
+  const roleOptions = useMemo<UserRole[]>(
+    () => (canCreateAdmin ? ["ADMIN", "BARBER"] : ["BARBER"]),
+    [canCreateAdmin]
+  );
 
   useEffect(() => {
-    if (assignableRoles.length) setRole(assignableRoles[0]);
-  }, [assignableRoles]);
-
-  async function load() {
+    let alive = true;
     setLoading(true);
     setErr("");
-    try {
-      const r = await api.get("/users");
-      setUsers((r.data as User[]) ?? []);
-    } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "No se pudo cargar la lista.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listUsers()
+      .then((data) => alive && setRows(Array.isArray(data) ? (data as any) : []))
+      .catch((e) => alive && setErr(e?.response?.data?.message || e?.message || "No se pudo cargar usuarios."))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
   }, []);
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return users;
-    return users.filter(
-      (u) =>
-        (u.email || "").toLowerCase().includes(s) ||
-        (u.role || "").toLowerCase().includes(s)
-    );
-  }, [users, q]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    setCreateMsg("");
-    if (!canWrite) return;
-
+    if (!canCreateSomeone) return;
     try {
-      setCreating(true);
-      await api.post("/users", {
-        email: email.trim(),
-        password: pass,
-        role,
-      });
-      setCreateMsg("✅ Usuario creado");
+      setSubmitting(true);
+      setErr("");
+      const r = await createUser(email.trim(), password, role);
+      setRows((prev) => [r as any, ...prev]);
       setEmail("");
-      setPass("");
-      await load();
+      setPassword("");
     } catch (e: any) {
-      setCreateMsg(
-        `❌ ${e?.response?.data?.message || e?.message || "No se pudo crear"}`
-      );
+      setErr(e?.response?.data?.message || e?.message || "No se pudo crear el usuario.");
     } finally {
-      setCreating(false);
-    }
-  }
-
-  async function onChangeRole(id: string, newRole: Role) {
-    try {
-      await api.patch(`/users/${id}/role`, { role: newRole }); // ✅ endpoint correcto
-      await load();
-    } catch (e: any) {
-      alert(
-        e?.response?.data?.message ||
-          e?.message ||
-          "No se pudo cambiar el rol"
-      );
-    }
-  }
-
-  async function onResetPassword(id: string) {
-    const newPass = prompt("Nueva contraseña temporal:");
-    if (!newPass) return;
-    try {
-      await api.post(`/users/${id}/reset-password`, { password: newPass });
-      alert("Contraseña actualizada");
-    } catch (e: any) {
-      const msg =
-        e?.response?.status === 404
-          ? "La API no tiene habilitado el endpoint de reset de contraseña."
-          : e?.response?.data?.message || e?.message || "No se pudo cambiar la contraseña";
-      alert(msg);
+      setSubmitting(false);
     }
   }
 
   return (
-    <AppLayout title="Usuarios" subtitle="Gestión de cuentas y roles">
+    <AppLayout title="Usuarios (staff)" subtitle="Gestiona el equipo del negocio">
+      {!admin && (
+        <div className="alert alert-warning mb-4">
+          <span>Tu rol no tiene acceso completo a esta sección.</span>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Crear usuario */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
-            <h2 className="card-title">Crear usuario</h2>
+            <h3 className="card-title">Invitar / crear usuario</h3>
 
-            {!canWrite && (
-              <div className="alert">
-                <span>Solo lectura. Contacta a un OWNER o ADMIN para crear o editar usuarios.</span>
-              </div>
-            )}
-
-            <form onSubmit={onCreate} className="grid gap-3">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Email</span>
-                </label>
-                <input
-                  className="input input-bordered"
-                  type="email"
-                  required
-                  disabled={!canWrite}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@tu-negocio.com"
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Contraseña</span>
-                </label>
-                <input
-                  className="input input-bordered"
-                  type="password"
-                  required
-                  disabled={!canWrite}
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
-                  placeholder="Contraseña temporal"
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Rol</span>
-                </label>
-                <select
-                  className="select select-bordered"
-                  value={role}
-                  disabled={!canWrite}
-                  onChange={(e) => setRole(e.target.value as Role)}
-                >
-                  {assignableRoles.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                className={`btn btn-primary ${creating ? "loading" : ""}`}
-                disabled={!canWrite || creating}
-              >
-                {creating ? "Creando…" : "Crear usuario"}
-              </button>
-
-              {!!createMsg && (
-                <div
-                  className={`alert ${
-                    createMsg.startsWith("✅") ? "alert-success" : "alert-warning"
-                  }`}
-                >
-                  <span>{createMsg}</span>
+            {!canCreateSomeone ? (
+              <p className="text-sm opacity-70">Tu rol no puede crear usuarios.</p>
+            ) : (
+              <form onSubmit={onCreate} className="space-y-3">
+                <div className="form-control">
+                  <label className="label"><span className="label-text">Correo</span></label>
+                  <input
+                    className="input input-bordered"
+                    type="email"
+                    placeholder="correo@dominio.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
-              )}
-            </form>
+
+                <div className="form-control">
+                  <label className="label"><span className="label-text">Contraseña</span></label>
+                  <input
+                    className="input input-bordered"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <div className="form-control">
+                  <label className="label"><span className="label-text">Rol</span></label>
+                  <select
+                    className="select select-bordered"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as UserRole)}
+                  >
+                    {roleOptions.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  {!canCreateAdmin && <span className="label-text-alt">Como {s.role}, solo puedes crear BARBER.</span>}
+                </div>
+
+                <button className={`btn btn-primary ${submitting ? "loading" : ""}`} disabled={submitting}>
+                  {submitting ? "" : "Crear usuario"}
+                </button>
+
+                {err && <div className="alert alert-warning"><span>{err}</span></div>}
+              </form>
+            )}
           </div>
         </div>
 
         {/* Listado */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="card-title">Usuarios</h2>
-              <Link to="/app/admin" className="btn btn-ghost btn-sm">
-                Volver al Panel
-              </Link>
-            </div>
-
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Buscar</span>
-              </label>
-              <input
-                className="input input-bordered"
-                placeholder="Email o rol…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
-
+            <h3 className="card-title">Usuarios</h3>
             {loading ? (
-              <div className="flex items-center gap-2 mt-3">
-                <span className="loading loading-spinner" /> Cargando…
-              </div>
+              <div className="flex items-center gap-2"><span className="loading loading-spinner" />Cargando…</div>
             ) : err ? (
-              <div className="alert alert-warning mt-3">
-                <span>{err}</span>
-              </div>
+              <div className="alert alert-warning"><span>{err}</span></div>
             ) : (
-              <div className="overflow-x-auto rounded-box border border-base-300 mt-3">
+              <div className="overflow-x-auto rounded-box border border-base-300">
                 <table className="table table-compact w-full">
                   <thead className="bg-base-200 sticky top-0 z-10">
                     <tr>
                       <th>Email</th>
                       <th>Rol</th>
-                      <th className="w-1">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((u) => {
-                      // Puede editar esta fila si tiene permiso para escribir Y
-                      // - es SUPERADMIN (siempre), o
-                      // - el rol actual del usuario está dentro de los asignables del creador
-                      const canEditRow =
-                        canWrite &&
-                        (myRole === "SUPERADMIN" || assignableRoles.includes(u.role));
-
-                      const options: { value: Role; label: string; disabled?: boolean }[] =
-                        canEditRow
-                          ? [
-                              ...assignableRoles.map((r) => ({ value: r, label: r })),
-                              // si el rol actual no está en los asignables, muéstralo bloqueado
-                              ...(assignableRoles.includes(u.role)
-                                ? []
-                                : [{ value: u.role, label: u.role, disabled: true }]),
-                            ]
-                          : [{ value: u.role, label: u.role, disabled: true }];
-
-                      return (
-                        <tr key={u.id}>
-                          <td>{u.email}</td>
-                          <td>
-                            <select
-                              className="select select-bordered select-xs"
-                              value={u.role}
-                              disabled={!canEditRow}
-                              onChange={(e) =>
-                                onChangeRole(u.id, e.target.value as Role)
-                              }
-                            >
-                              {options.map((op) => (
-                                <option
-                                  key={op.value}
-                                  value={op.value}
-                                  disabled={op.disabled}
-                                >
-                                  {op.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            <div className="join join-vertical sm:join-horizontal">
-                              <button
-                                className="btn btn-xs btn-outline join-item"
-                                disabled={!canEditRow}
-                                onClick={() => onResetPassword(u.id)}
-                                title="Resetear contraseña"
-                              >
-                                Reset pass
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {!filtered.length && (
-                      <tr>
-                        <td colSpan={3} className="text-sm opacity-70 p-4">
-                          Sin resultados
-                        </td>
+                    {rows.map((u) => (
+                      <tr key={u.id}>
+                        <td>{u.email}</td>
+                        <td>{u.role}</td>
                       </tr>
+                    ))}
+                    {rows.length === 0 && (
+                      <tr><td colSpan={2} className="p-4 text-sm opacity-70">Sin usuarios.</td></tr>
                     )}
                   </tbody>
                 </table>
