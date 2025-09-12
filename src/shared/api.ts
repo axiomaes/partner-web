@@ -82,7 +82,6 @@ function businessFromToken(token: string): string | null {
 export function postLoginPathByRole(role: UserRole): string {
   switch (role) {
     case "SUPERADMIN": return "/cpanel";
-    // OWNER / ADMIN / BARBER → /app (el router ya redirige a /app/admin según rol)
     case "OWNER":
     case "ADMIN":
     case "BARBER":
@@ -112,7 +111,11 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de respuesta: NO redirijas en 401/403 si es /cp/* ni /auth/login ni OPTIONS
+// Interceptor de respuesta (soft-logout)
+// Solo fuerza logout en endpoints críticos de sesión.
+// Para el resto, deja que el componente maneje el 401/403 sin borrar la sesión.
+const FORCE_LOGOUT_PREFIXES = ["/auth/me", "/auth/refresh", "/users/me", "/session", "/auth/logout"];
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -121,15 +124,16 @@ api.interceptors.response.use(
     const cfgUrl = String(err?.config?.url || "");
     let path = cfgUrl;
     try { path = new URL(cfgUrl, baseURL).pathname; } catch {}
-    const isCpanel = path.startsWith("/cp/");
-    const isAuthLogin = path === "/auth/login";
 
-    if ((status === 401 || status === 403) && !isCpanel && !isAuthLogin && method !== "OPTIONS") {
+    const isCritical = FORCE_LOGOUT_PREFIXES.some((p) => path.startsWith(p));
+
+    if ((status === 401 || status === 403) && isCritical && method !== "OPTIONS") {
       clearPanelSession();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.replace("/login");
       }
     }
+    // Para cualquier otro 401/403, no tocamos la sesión.
     return Promise.reject(err);
   }
 );
@@ -236,8 +240,18 @@ export const createStaff = (email: string, password: string, role: "ADMIN" | "BA
 /** Clientes */
 export const listCustomers = (businessId?: string) =>
   api
-    .get(businessId ? `/customers?businessId=${encodeURIComponent(businessId)}` : "/customers")
-    .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
+    .get(businessId ? `/customers?businessId=${encodeURIComponent(businessId)}` : "/customers", {
+      validateStatus: () => true, // <- no disparemos logout automático
+    })
+    .then((r) => {
+      if (r.status >= 200 && r.status < 300) {
+        return Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? [];
+      }
+      // devolvemos un error “suave” con el status para que la UI lo muestre
+      const err: any = new Error(r.data?.message || `Error HTTP ${r.status}`);
+      err.status = r.status;
+      throw err;
+    });
 
 export const createCustomer = (name: string, phone: string) =>
   api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
