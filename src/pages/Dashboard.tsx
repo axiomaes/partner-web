@@ -18,7 +18,7 @@ export default function Dashboard() {
   const first = (s.name || s.email || "").split(" ")[0] || "¡hola!";
 
   const adminOrAbove = isAdmin(s.role); // ADMIN | OWNER | SUPERADMIN
-  const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role) || isAdmin(s.role);
+  const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role);
 
   // Estado WhatsApp (informativo)
   const [wa, setWa] = useState<WaStatus | null>(null);
@@ -41,8 +41,9 @@ export default function Dashboard() {
       <div className="mb-4 flex flex-wrap gap-2">
         <Link to="/app/customers" className="btn btn-primary btn-sm">Listado de clientes</Link>
         <Link to="/app/customers/new" className="btn btn-outline btn-sm">Crear cliente</Link>
-        <Link to="/staff/checkin" className="btn btn-outline btn-sm">Escanear QR</Link>
-        {ownerOrAbove && <Link to="/app/admin#staff" className="btn btn-outline btn-sm">Gestionar staff</Link>}
+        <Link to="/staff/checkin" className="btn btn-outline btn-sm">Escanear / Check-in</Link>
+        {adminOrAbove && <Link to="/app/admin" className="btn btn-outline btn-sm">Panel Admin</Link>}
+        {ownerOrAbove && <Link to="/app/users" className="btn btn-outline btn-sm">Gestionar staff</Link>}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -51,8 +52,8 @@ export default function Dashboard() {
           <div className="card-body">
             <h3 className="card-title">Bienvenido, {first}</h3>
             <p className="opacity-70 text-sm">
-              Usa los accesos rápidos para gestionar clientes, crear nuevos,
-              escanear QR en el puesto y (si eres OWNER/ADMIN) administrar tu equipo.
+              Abre el listado de clientes, crea nuevos, escanea su QR para sumar visitas
+              y (si eres OWNER/ADMIN) administra tu equipo y herramientas del negocio.
             </p>
           </div>
         </div>
@@ -82,17 +83,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Cliente – accesos */}
+        {/* Clientes – accesos */}
         <div className="card bg-base-100 shadow lg:col-span-2">
           <div className="card-body">
             <h3 className="card-title">Clientes</h3>
             <p className="text-sm opacity-70">
-              Abre el listado, crea clientes o escanea QR para registrar visitas.
+              Abre el listado, crea clientes o escanea su QR para registrar visitas.
             </p>
             <div className="join">
               <Link to="/app/customers" className="btn btn-primary join-item">Abrir listado</Link>
               <Link to="/app/customers/new" className="btn btn-outline join-item">Crear cliente</Link>
-              <Link to="/staff/checkin" className="btn btn-outline join-item">Escanear QR</Link>
+              <Link to="/staff/checkin" className="btn btn-outline join-item">Escanear / Check-in</Link>
             </div>
           </div>
         </div>
@@ -100,12 +101,12 @@ export default function Dashboard() {
         {/* Staff */}
         {ownerOrAbove && (
           <div className="card bg-base-100 shadow lg:col-span-2">
-            <div className="card-body" id="staff">
+            <div className="card-body">
               <h3 className="card-title">Equipo (staff)</h3>
-              <p className="text-sm opacity-70">Gestiona cuentas de tu equipo desde el panel.</p>
+              <p className="text-sm opacity-70">Gestiona cuentas de tu equipo.</p>
               <div className="join">
-                <Link to="/app/admin#staff" className="btn btn-ghost join-item">Abrir gestión de usuarios</Link>
-                <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
+                <Link to="/app/users" className="btn btn-ghost join-item">Abrir gestión de usuarios</Link>
+                <Link to="/app/admin" className="btn btn-ghost join-item">Herramientas del negocio</Link>
               </div>
             </div>
           </div>
