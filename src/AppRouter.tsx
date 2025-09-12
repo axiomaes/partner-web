@@ -14,6 +14,7 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
+import Dashboard from "./pages/Dashboard";          // 👈 USAR Dashboard en /app
 import AdminPanel from "./pages/AdminPanel";
 import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
@@ -34,9 +35,9 @@ function AlreadyLoggedRedirect() {
 
 export default function AppRouter() {
   const s = useSession();
-  const admin = isAdmin(s.role); // ✅ usar el rol, no el objeto sesión
+  const admin = isAdmin(s.role);
 
-  // Mientras no esté lista la sesión, no decidas redirecciones
+  // evita flicker antes de hidratar la sesión
   if (!s.ready) return null;
 
   return (
@@ -75,8 +76,8 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* ADMIN/OWNER/SUPERADMIN → AdminPanel; BARBER → check-in */}
-              {admin ? <Navigate to="/app/admin" replace /> : <Navigate to="/staff/checkin" replace />}
+              {/* OWNER/ADMIN/SUPERADMIN ven Dashboard con accesos; BARBER a check-in */}
+              {admin ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
         />
