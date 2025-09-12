@@ -1,4 +1,3 @@
-// src/layout/AppLayout.tsx
 import { PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
@@ -21,10 +20,10 @@ export default function AppLayout({ children, title, subtitle }: Props) {
     nav("/login", { replace: true });
   };
 
-  // resalta pestañas por prefijo de ruta
+  // activa pestaña por prefijo
   const isPath = (prefix: string) => loc.pathname.startsWith(prefix);
 
-  // logo: si hay sesión, lleva al panel adecuado
+  // logo → al panel correspondiente
   const logoHref = isAuth ? (admin ? "/app" : "/staff/checkin") : "/";
 
   return (
@@ -37,7 +36,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
             <span className="hidden sm:inline">{BRAND.shortName}</span>
           </Link>
 
-          {/* Tabs principales */}
+          {/* Tabs */}
           <div className="tabs tabs-boxed ml-2">
             <NavLink
               to="/app/customers"
@@ -46,7 +45,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
               Clientes
             </NavLink>
 
-            {/* Staff debe ir SIEMPRE al check-in */}
+            {/* Staff = Check-in */}
             <NavLink
               to="/staff/checkin"
               className={() => `tab ${isPath("/staff") ? "tab-active" : ""}`}
@@ -54,7 +53,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
               Staff
             </NavLink>
 
-            {/* Admin solo visible si es ADMIN/OWNER/SUPERADMIN */}
+            {/* Admin solo si es ADMIN/OWNER/SUPERADMIN */}
             {admin ? (
               <NavLink
                 to="/app/admin"
@@ -63,11 +62,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
                 Admin
               </NavLink>
             ) : (
-              <button
-                className="tab tab-disabled"
-                title="Solo ADMIN/OWNER/SUPERADMIN"
-                aria-disabled="true"
-              >
+              <button className="tab tab-disabled" title="Solo ADMIN/OWNER/SUPERADMIN" aria-disabled="true">
                 Admin
               </button>
             )}
@@ -86,33 +81,20 @@ export default function AppLayout({ children, title, subtitle }: Props) {
                 </div>
                 <span className="ml-2 hidden sm:inline text-sm">{email}</span>
               </div>
-              <ul
-                tabIndex={0}
-                className="menu dropdown-content bg-base-100 rounded-box z-[1] mt-2 w-64 p-2 shadow"
-              >
+              <ul tabIndex={0} className="menu dropdown-content bg-base-100 rounded-box z-[1] mt-2 w-64 p-2 shadow">
                 <li className="menu-title">{email}</li>
-                <li>
-                  <Link to="/app">Ir al panel</Link>
-                </li>
-                {admin && (
-                  <li>
-                    <Link to="/app/admin">Administración</Link>
-                  </li>
-                )}
-                <li>
-                  <button onClick={logout}>Cerrar sesión</button>
-                </li>
+                <li><Link to="/app">Ir al panel</Link></li>
+                {admin && <li><Link to="/app/admin">Administración</Link></li>}
+                <li><button onClick={logout}>Cerrar sesión</button></li>
               </ul>
             </div>
           ) : (
-            <Link to="/login" className="btn btn-primary btn-sm">
-              Entrar
-            </Link>
+            <Link to="/login" className="btn btn-primary btn-sm">Entrar</Link>
           )}
         </div>
       </div>
 
-      {/* Cabecera de página */}
+      {/* Cabecera */}
       {(title || subtitle) && (
         <div className="max-w-6xl mx-auto px-4 py-4">
           {title && <h1 className="text-xl font-semibold">{title}</h1>}
@@ -126,17 +108,9 @@ export default function AppLayout({ children, title, subtitle }: Props) {
       {/* Pie */}
       <footer className="mt-10 border-t py-6 text-center text-xs opacity-70">
         © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name} ·{" "}
-        <a className="link" href="/legal/privacidad">
-          Privacidad
-        </a>{" "}
-        ·{" "}
-        <a className="link" href="/legal/aviso">
-          Aviso legal
-        </a>{" "}
-        ·{" "}
-        <a className="link" href="/legal/cookies">
-          Cookies
-        </a>
+        <a className="link" href="/legal/privacidad">Privacidad</a> ·{" "}
+        <a className="link" href="/legal/aviso">Aviso legal</a> ·{" "}
+        <a className="link" href="/legal/cookies">Cookies</a>
       </footer>
     </div>
   );
