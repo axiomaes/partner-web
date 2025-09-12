@@ -9,72 +9,68 @@ import {
   lookupCustomer,
   type CustomerLite,
 } from "@/shared/api";
-import { useSession, isAdmin } from "@/shared/auth";
+import { useSession, isAdmin, isOwner } from "@/shared/auth";
 
-/** Intenta extraer un customerId a partir del texto leído del QR. */
+/** Detecta error de duplicado en el mismo día (por status o texto). */
+function isDuplicateVisitError(e: any): boolean {
+  const msg = e?.response?.data?.message || e?.message || "";
+  return e?.response?.status === 409 || /same\s*day|mismo\s*d[ií]a|already.*today/i.test(msg);
+}
+
+/** Extrae customerId de varios formatos de QR. */
 function extractCustomerIdFromAny(txt: string): string | null {
   const raw = txt.trim();
-
-  // 1) JSON con payload (preferido)
   try {
     const obj = JSON.parse(raw);
     const id = obj?.customerId || obj?.cid || obj?.id;
     if (id && typeof id === "string") return id;
-  } catch {
-    // no es JSON, seguimos
-  }
-
-  // 2) URL pública del PNG: .../public/customers/:id/qr.png
+  } catch {}
   const m1 = raw.match(/\/public\/customers\/([^/]+)\/qr/i);
   if (m1?.[1]) return decodeURIComponent(m1[1]);
-
-  // 3) Deep link con ?cid=
   const m2 = raw.match(/[?&](?:cid|customerId)=([^&]+)/i);
   if (m2?.[1]) return decodeURIComponent(m2[1]);
-
-  // 4) ID "en crudo" (uuid o similar)
   if (/^[a-zA-Z0-9_-]{10,}$/.test(raw)) return raw;
-
   return null;
 }
 
 export default function StaffCheckin() {
   const { role } = useSession();
+  const admin = isAdmin(role);
   const canAdd = useMemo(
     () => ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")),
     [role]
   );
-  const admin = isAdmin(role);
+  const isOwnerRole = isOwner(role);
 
-  // Estado general
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Búsqueda manual
+  // búsqueda manual
   const [phone, setPhone] = useState("+34");
   const [email, setEmail] = useState("");
   const [found, setFound] = useState<CustomerLite | null>(null);
 
-  // Escaneo: cámara
+  // cámara
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stopRef = useRef<null | (() => void)>(null);
   const [camOn, setCamOn] = useState(false);
   const [lastScan, setLastScan] = useState<string>("");
 
-  // Escaneo: lector físico (wedge)
+  // lector USB
   const [wedge, setWedge] = useState("");
 
-  // Pegado manual
+  // pegar
   const [pasted, setPasted] = useState("");
 
+  // override modal (cuando el server devuelve duplicado día)
+  const [needsOverride, setNeedsOverride] = useState<null | { action: () => Promise<void> }>(null);
+
   useEffect(() => {
-    // Apagar cámara al desmontar
     return () => {
       if (stopRef.current) stopRef.current();
     };
   }, []);
 
-  /** Inicia/parar cámara con ZXing de manera perezosa (solo si el usuario la activa) */
   async function toggleCamera() {
     if (camOn) {
       setCamOn(false);
@@ -84,62 +80,61 @@ export default function StaffCheckin() {
     }
     setMsg("");
     try {
-      // Carga perezosa
       const { BrowserQRCodeReader } = await import("@zxing/browser");
       const reader = new BrowserQRCodeReader();
-
       const controls = await reader.decodeFromVideoDevice(
         undefined,
         videoRef.current!,
-        (result, err) => {
-          if (result) {
-            const text = result.getText();
-            // Evita disparos repetidos por el mismo frame
-            if (text && text !== lastScan) {
-              setLastScan(text);
-              handleScanned(text);
-            }
+        (result) => {
+          const text = result?.getText?.();
+          if (text && text !== lastScan) {
+            setLastScan(text);
+            handleScanned(text);
           }
         }
       );
       stopRef.current = () => controls?.stop();
       setCamOn(true);
-    } catch (e: any) {
-      setMsg("❌ No se pudo abrir la cámara. Asegura HTTPS y permisos.");
-      console.error(e);
+    } catch (e) {
+      setMsg("❌ No se pudo abrir la cámara. Revisa permisos/HTTPS.");
     }
   }
 
-  /** Maneja cualquier texto proveniente de QR (cámara, lector o pegar) */
-  async function handleScanned(text: string) {
+  /** Intenta registrar visita; si hay duplicado del día, solicita override. */
+  async function tryRegister(register: (opts?: { force?: boolean }) => Promise<any>) {
     setMsg("");
     try {
       setBusy(true);
-
-      // Si es un JSON válido de nuestro payload → usar endpoint dedicado
-      let usedJsonPayload = false;
-      try {
-        const asJson = JSON.parse(text);
-        if (asJson && typeof asJson === "object" && (asJson.customerId || asJson.cid || asJson.id || asJson.t)) {
-          await addVisitFromQrPayload(text.trim());
-          usedJsonPayload = true;
-        }
-      } catch {
-        /* no-op */
-      }
-
-      if (!usedJsonPayload) {
-        const id = extractCustomerIdFromAny(text);
-        if (!id) throw new Error("No se reconoció ningún ID en el QR.");
-        await addVisit(id, "Visita por QR");
-      }
-
-      setMsg("✅ Visita registrada por QR.");
+      await register();
+      setMsg("✅ Visita registrada.");
     } catch (e: any) {
-      setMsg("❌ " + (e?.response?.data?.message || e?.message || "QR inválido."));
+      if (isDuplicateVisitError(e)) {
+        setMsg("⚠️ Ya se registró una visita hoy. Requiere autorización del OWNER.");
+        setNeedsOverride({ action: async () => register({ force: true }) });
+      } else {
+        setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo registrar la visita."));
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleScanned(text: string) {
+    // 1) Si es payload JSON válido de nuestro QR → endpoint dedicado
+    try {
+      const asJson = JSON.parse(text);
+      if (asJson && typeof asJson === "object" && (asJson.customerId || asJson.cid || asJson.id || asJson.t)) {
+        await tryRegister((opts) => addVisitFromQrPayload(text.trim(), opts));
+        return;
+      }
+    } catch {}
+    // 2) Extraer id de URL/ID crudo
+    const id = extractCustomerIdFromAny(text);
+    if (!id) {
+      setMsg("❌ No se reconoció el contenido del QR.");
+      return;
+    }
+    await tryRegister((opts) => addVisit(id, "Visita por QR", opts));
   }
 
   async function onLookup() {
@@ -159,29 +154,11 @@ export default function StaffCheckin() {
 
   async function onAddVisit() {
     if (!found) return;
-    setMsg("");
-    try {
-      setBusy(true);
-      await addVisit(found.id, "Visita desde check-in");
-      setMsg("✅ Visita registrada.");
-    } catch (e: any) {
-      setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo registrar la visita."));
-    } finally {
-      setBusy(false);
-    }
+    await tryRegister((opts) => addVisit(found.id, "Visita desde check-in", opts));
   }
 
   async function onQuickPhone() {
-    setMsg("");
-    try {
-      setBusy(true);
-      await addVisitByPhone(phone.trim(), "Visita rápida (teléfono)");
-      setMsg("✅ Visita registrada (por teléfono).");
-    } catch (e: any) {
-      setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo registrar por teléfono."));
-    } finally {
-      setBusy(false);
-    }
+    await tryRegister((opts) => addVisitByPhone(phone.trim(), "Visita rápida (teléfono)", opts));
   }
 
   return (
@@ -192,8 +169,47 @@ export default function StaffCheckin() {
         </div>
       )}
 
+      {/* Modal Override (solo OWNER puede autorizar) */}
+      <input type="checkbox" className="modal-toggle" checked={!!needsOverride} readOnly />
+      {needsOverride && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-2">Se necesita autorización</h3>
+            <p className="text-sm opacity-80">
+              Ya existe una visita hoy para este cliente. Solo un <b>OWNER</b> puede autorizar un segundo registro en el día.
+            </p>
+            <div className="modal-action">
+              <button className="btn" onClick={() => setNeedsOverride(null)}>Cancelar</button>
+              {isOwnerRole ? (
+                <button
+                  className={`btn btn-primary ${busy ? "loading" : ""}`}
+                  disabled={busy}
+                  onClick={async () => {
+                    try {
+                      setBusy(true);
+                      await needsOverride.action();
+                      setNeedsOverride(null);
+                      setMsg("✅ Visita registrada con autorización del OWNER.");
+                    } catch (e: any) {
+                      setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo autorizar."));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {busy ? "" : "Autorizar y registrar"}
+                </button>
+              ) : (
+                <span className="text-xs opacity-70">Inicie sesión un OWNER para autorizar.</span>
+              )}
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setNeedsOverride(null)} />
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Columna izquierda: Escaneo */}
+        {/* Escaneo */}
         <section className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h3 className="card-title">Escanear QR</h3>
@@ -202,29 +218,22 @@ export default function StaffCheckin() {
             <div className="rounded-box border border-base-300 p-3 mb-3">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="font-medium">Cámara del dispositivo</div>
-                <button
-                  onClick={toggleCamera}
-                  className={`btn btn-sm ${camOn ? "btn-error" : "btn-primary"}`}
-                >
+                <button onClick={toggleCamera} className={`btn btn-sm ${camOn ? "btn-error" : "btn-primary"}`}>
                   {camOn ? "Detener cámara" : "Usar cámara"}
                 </button>
               </div>
-
               <div className="aspect-video bg-base-200 rounded-box grid place-items-center overflow-hidden">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full"></video>
+                <video ref={videoRef} autoPlay playsInline muted className="w-full" />
               </div>
-
-              <p className="text-xs opacity-70 mt-2">
-                Requiere HTTPS y permisos de cámara. Apunta al QR del cliente y se registrará la visita automáticamente.
-              </p>
+              <p className="text-xs opacity-70 mt-2">Apunta al QR del cliente y se registrará la visita.</p>
             </div>
 
-            {/* Lector físico (wedge) */}
+            {/* Lector USB */}
             <div className="rounded-box border border-base-300 p-3 mb-3">
               <div className="font-medium mb-2">Lector físico (USB)</div>
               <input
                 className="input input-bordered w-full"
-                placeholder="Coloca el cursor aquí y lee el QR con el escáner…"
+                placeholder="Foco aquí y lee el QR con el escáner…"
                 value={wedge}
                 onChange={(e) => setWedge(e.target.value)}
                 onKeyDown={(e) => {
@@ -235,12 +244,10 @@ export default function StaffCheckin() {
                   }
                 }}
               />
-              <p className="text-xs opacity-70 mt-2">
-                La mayoría de escáneres actúan como teclado y envían “Enter” al final. También puedes pegar el valor manualmente.
-              </p>
+              <p className="text-xs opacity-70 mt-2">La mayoría de escáneres envían “Enter” al final.</p>
             </div>
 
-            {/* Pegar payload/ID/URL */}
+            {/* Pegar contenido */}
             <div className="rounded-box border border-base-300 p-3">
               <div className="font-medium mb-2">Pegar payload / ID / URL</div>
               <textarea
@@ -260,7 +267,7 @@ export default function StaffCheckin() {
           </div>
         </section>
 
-        {/* Columna derecha: Búsqueda manual */}
+        {/* Búsqueda manual */}
         <section className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h3 className="card-title">Buscar cliente</h3>
