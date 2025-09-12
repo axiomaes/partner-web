@@ -14,7 +14,7 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import AdminPanel from "./pages/AdminPanel";          // 👈 Panel con tarjetas
+import AdminPanel from "./pages/AdminPanel";
 import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
@@ -27,13 +27,17 @@ function AlreadyLoggedRedirect() {
   if (!s.ready) return null;
   if (s.token) {
     // SUPERADMIN -> /cpanel ; resto -> /app
-    return <Navigate to={isSuperAdmin(s) ? "/cpanel" : "/app"} replace />;
+    return <Navigate to={isSuperAdmin(s.role) ? "/cpanel" : "/app"} replace />;
   }
   return null;
 }
 
 export default function AppRouter() {
   const s = useSession();
+  const admin = isAdmin(s.role); // ✅ usar el rol, no el objeto sesión
+
+  // Mientras no esté lista la sesión, no decidas redirecciones
+  if (!s.ready) return null;
 
   return (
     <BrowserRouter>
@@ -71,8 +75,8 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* Si es ADMIN/OWNER/SUPERADMIN → AdminPanel; si no, al check-in */}
-              {isAdmin(s) ? <Navigate to="/app/admin" replace /> : <Navigate to="/staff/checkin" replace />}
+              {/* ADMIN/OWNER/SUPERADMIN → AdminPanel; BARBER → check-in */}
+              {admin ? <Navigate to="/app/admin" replace /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
         />
@@ -118,7 +122,7 @@ export default function AppRouter() {
           path="/cpanel/*"
           element={
             <RouteGuard>
-              {isSuperAdmin(s) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
+              {isSuperAdmin(s.role) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
             </RouteGuard>
           }
         />
