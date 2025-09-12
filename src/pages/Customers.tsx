@@ -1,5 +1,5 @@
 // src/pages/Customers.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
@@ -9,20 +9,20 @@ import {
   type CustomerLite,
 } from "@/shared/api";
 
-/** ---- Tipos ---- */
+// Fallback de tipo por si CustomerLite no trae todo
 type Row = CustomerLite & {
   email?: string | null;
   visitsCount?: number;
   createdAt?: string;
 };
 
-/** ---- Helpers de enmascarado (para BARBER) ---- */
 function maskPhone(p?: string | null) {
   if (!p) return "—";
   const digits = p.replace(/\D/g, "");
   if (digits.length <= 4) return "•••";
   return `${digits.slice(0, 2)}•••${digits.slice(-2)}`;
 }
+
 function maskEmail(e?: string | null) {
   if (!e) return "—";
   const [user, dom] = e.split("@");
@@ -40,70 +40,73 @@ export default function Customers() {
     [role]
   );
 
-  /** ---- Estado ---- */
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<Row[]>([]);
+  const [allRows, setAllRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // QR modal
   const [qrId, setQrId] = useState<string | null>(null);
 
-  /** ---- Búsqueda con debounce ---- */
-  const debTimer = useRef<number | null>(null);
+  // Carga inicial (sin argumentos, según la firma real de listCustomers)
   useEffect(() => {
     let live = true;
-
-    // pequeño debounce para no spamear la API
-    if (debTimer.current) window.clearTimeout(debTimer.current);
-    debTimer.current = window.setTimeout(async () => {
+    (async () => {
       try {
         setLoading(true);
         setErr(null);
-        const data = await listCustomers({ q: q.trim() || undefined, limit: 50 });
+        const data = await listCustomers(); // ← sin params
         if (!live) return;
-        setRows(data || []);
+        setAllRows((data || []) as Row[]);
       } catch (e: any) {
         if (!live) return;
         setErr(e?.message || "No se pudo cargar el listado.");
       } finally {
         if (live) setLoading(false);
       }
-    }, 300);
-
+    })();
     return () => {
       live = false;
-      if (debTimer.current) window.clearTimeout(debTimer.current);
     };
-  }, [q]);
+  }, []);
 
-  /** ---- Render ---- */
+  // Filtro en cliente
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return allRows;
+    return allRows.filter((c) => {
+      const hay = [
+        c.name,
+        c.phone,
+        (c as any).email,
+        c.id,
+      ]
+        .filter(Boolean)
+        .map((x) => String(x).toLowerCase())
+        .some((txt) => txt.includes(term));
+      return hay;
+    });
+  }, [allRows, q]);
+
   return (
-    <AppLayout
-      title="Clientes"
-      subtitle="Busca, abre el detalle y muestra el QR del cliente."
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <Link to="/app/customers/new" className="btn btn-primary btn-sm">
-            + Crear cliente
-          </Link>
-        </div>
-      }
-    >
-      {/* Buscador */}
-      <div className="mb-4 flex items-center gap-2">
+    <AppLayout title="Clientes" subtitle="Busca, abre el detalle y muestra el QR del cliente.">
+      {/* Acciones */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           className="input input-bordered w-full max-w-md"
           placeholder="Buscar por nombre, teléfono o email…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          aria-label="Buscar clientes"
         />
-        <button
-          className="btn btn-ghost"
-          onClick={() => setQ("")}
-          title="Limpiar búsqueda"
-        >
-          Limpiar
-        </button>
+        {q && (
+          <button className="btn btn-ghost" onClick={() => setQ("")}>
+            Limpiar
+          </button>
+        )}
+        <div className="grow" />
+        <Link to="/app/customers/new" className="btn btn-primary">
+          + Crear cliente
+        </Link>
       </div>
 
       {err && (
@@ -150,19 +153,15 @@ export default function Customers() {
                     {canSeeSensitive ? c.phone || "—" : maskPhone(c.phone)}
                   </td>
                   <td className="hidden md:table-cell">
-                    {canSeeSensitive ? c.email || "—" : maskEmail(c.email)}
+                    {canSeeSensitive ? (c as any).email || "—" : maskEmail((c as any).email)}
                   </td>
-                  <td className="hidden lg:table-cell">{c.visitsCount ?? "—"}</td>
+                  <td className="hidden lg:table-cell">{(c as any).visitsCount ?? "—"}</td>
                   <td className="hidden lg:table-cell">
                     {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}
                   </td>
                   <td className="text-right">
                     <div className="join">
-                      <Link
-                        to={`/app/customers/${c.id}`}
-                        className="btn btn-ghost btn-xs join-item"
-                        title="Ver detalle"
-                      >
+                      <Link to={`/app/customers/${c.id}`} className="btn btn-ghost btn-xs join-item">
                         Detalle
                       </Link>
                       <button
@@ -184,7 +183,7 @@ export default function Customers() {
       {/* Modal QR */}
       <input type="checkbox" className="modal-toggle" checked={!!qrId} readOnly />
       {qrId && (
-        <div className="modal modal-open" onKeyDown={(e) => e.key === "Escape" && setQrId(null)}>
+        <div className="modal modal-open">
           <div className="modal-box">
             <h3 className="font-bold text-lg mb-2">QR del cliente</h3>
             <div className="flex justify-center mb-3">
@@ -192,12 +191,10 @@ export default function Customers() {
                 src={publicCustomerQrUrl(qrId)}
                 alt="QR del cliente"
                 className="w-48 h-48 object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.opacity = "0.4";
-                }}
+                onError={(e) => ((e.currentTarget.style.opacity = "0.4"))}
               />
             </div>
-            <div className="text-xs break-all bg-base-200 rounded p-2 mb-3">
+            <div className="text-xs break-all bg-base-200 rounded p-2">
               {publicCustomerQrUrl(qrId)}
             </div>
             <div className="modal-action">
@@ -210,7 +207,7 @@ export default function Customers() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Abrir PNG
+                Abrir en nueva pestaña
               </a>
             </div>
           </div>
