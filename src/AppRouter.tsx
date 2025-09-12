@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
-import { useSession, isSuperAdmin, isAdmin } from "./shared/auth";
+import { useSession, isSuperAdmin, isAdmin, isOwner } from "./shared/auth";
 
 /* ==== Páginas ==== */
 import Home from "./pages/Home";
@@ -15,11 +15,11 @@ import PortalPoints from "./portal/PortalPoints";
 import StaffCheckin from "./pages/StaffCheckin";
 import Dashboard from "./pages/Dashboard";          // /app → Dashboard
 import AdminPanel from "./pages/AdminPanel";
-import AdminUsers from "./pages/AdminUsers";        // 👈 existe en tu repo
-import Customers from "./pages/Customers";
-import CustomersNew from "./pages/CustomersNew";
+import AdminUsers from "./pages/AdminUsers";
+import Customers from "./pages/Customers";           // ⬅️ LISTADO
+import CustomersNew from "./pages/CustomersNew";     // ⬅️ ALTA
 import CustomerDetail from "./pages/CustomerDetail";
-import Logout from "./pages/Logout";                // 👈 existe en tu repo
+import Logout from "./pages/Logout";
 
 /* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
@@ -36,7 +36,7 @@ function AlreadyLoggedRedirect() {
 
 export default function AppRouter() {
   const s = useSession();
-  const admin = isAdmin(s.role);
+  const adminOrAbove = isSuperAdmin(s.role) || isOwner(s.role) || isAdmin(s.role);
 
   // evita flicker antes de hidratar la sesión
   if (!s.ready) return null;
@@ -79,7 +79,7 @@ export default function AppRouter() {
           element={
             <RouteGuard>
               {/* OWNER/ADMIN/SUPERADMIN → Dashboard; BARBER → check-in */}
-              {admin ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
+              {adminOrAbove ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
         />
@@ -94,7 +94,7 @@ export default function AppRouter() {
           }
         />
 
-        {/* Gestión de usuarios (tienes AdminUsers.tsx) */}
+        {/* Gestión de usuarios */}
         <Route
           path="/app/users"
           element={
@@ -109,7 +109,7 @@ export default function AppRouter() {
           path="/app/customers"
           element={
             <RouteGuard>
-              <Customers />
+              <Customers /> {/* ⬅️ LISTADO */}
             </RouteGuard>
           }
         />
@@ -117,7 +117,7 @@ export default function AppRouter() {
           path="/app/customers/new"
           element={
             <RouteGuard>
-              <CustomersNew />
+              <CustomersNew /> {/* ⬅️ ALTA */}
             </RouteGuard>
           }
         />
