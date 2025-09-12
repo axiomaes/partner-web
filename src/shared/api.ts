@@ -82,8 +82,7 @@ function businessFromToken(token: string): string | null {
 export function postLoginPathByRole(role: UserRole): string {
   switch (role) {
     case "SUPERADMIN": return "/cpanel";
-    // 🔧 Importante: tu router no tiene /app/admin ni /staff/checkin
-    // Manda a /app para OWNER/ADMIN/BARBER
+    // OWNER / ADMIN / BARBER → /app (el router ya redirige a /app/admin según rol)
     case "OWNER":
     case "ADMIN":
     case "BARBER":
@@ -235,9 +234,9 @@ export const createStaff = (email: string, password: string, role: "ADMIN" | "BA
   api.post("/users", { email, password, role }).then((r) => r.data);
 
 /** Clientes */
-export const listCustomers = () =>
+export const listCustomers = (businessId?: string) =>
   api
-    .get("/customers")
+    .get(businessId ? `/customers?businessId=${encodeURIComponent(businessId)}` : "/customers")
     .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
 export const createCustomer = (name: string, phone: string) =>
