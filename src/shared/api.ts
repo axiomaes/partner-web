@@ -235,9 +235,19 @@ export const listCustomers = () =>
     .get("/customers")
     .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
-export const createCustomer = (name: string, phone: string) =>
-  api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
+export async function createCustomer(
+  name: string,
+  phone: string,
+  birthday?: string // YYYY-MM-DD opcional
+): Promise<{ id: string; name: string; existed?: boolean }> {
+  const body: Record<string, any> = { name, phone };
+  // Enviamos birthday si viene; el backend (Prisma DateTime) lo parseará.
+  // Si tu API exige ISO, usa: new Date(birthday + "T00:00:00").toISOString()
+  if (birthday && /^\d{4}-\d{2}-\d{2}$/.test(birthday)) body.birthday = birthday;
 
+  const r = await api.post("/customers", body);
+  return r.data;
+}
 /** Obtener un cliente por id */
 export async function getCustomer(id: string): Promise<CustomerLite | null> {
   try {
