@@ -1,5 +1,6 @@
+// src/layout/AppLayout.tsx
 import { PropsWithChildren } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "@/shared/brand";
 import { useSession, clearSession, isAdmin } from "@/shared/auth";
 
@@ -10,6 +11,7 @@ type Props = PropsWithChildren<{
 
 export default function AppLayout({ children, title, subtitle }: Props) {
   const nav = useNavigate();
+  const loc = useLocation();
   const { name, email, role, token } = useSession();
   const isAuth = !!token;
   const admin = isAdmin(role);
@@ -19,19 +21,56 @@ export default function AppLayout({ children, title, subtitle }: Props) {
     nav("/login", { replace: true });
   };
 
+  // resalta pestañas por prefijo de ruta
+  const isPath = (prefix: string) => loc.pathname.startsWith(prefix);
+
+  // logo: si hay sesión, lleva al panel adecuado
+  const logoHref = isAuth ? (admin ? "/app" : "/staff/checkin") : "/";
+
   return (
     <div className="min-h-screen bg-base-200">
       {/* Top bar */}
       <div className="navbar bg-base-100 border-b sticky top-0 z-40">
         <div className="flex-1">
-          <Link to="/" className="btn btn-ghost normal-case text-lg gap-2">
+          <Link to={logoHref} className="btn btn-ghost normal-case text-lg gap-2">
             <img src={BRAND.logoUrl} alt={BRAND.name} className="h-6 w-auto" />
             <span className="hidden sm:inline">{BRAND.shortName}</span>
           </Link>
+
+          {/* Tabs principales */}
           <div className="tabs tabs-boxed ml-2">
-            <NavLink to="/app/customers" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Clientes</NavLink>
-            <NavLink to="/app" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Staff</NavLink>
-            <NavLink to="/app/admin" className={({ isActive }) => `tab ${isActive ? "tab-active" : ""}`}>Admin</NavLink>
+            <NavLink
+              to="/app/customers"
+              className={() => `tab ${isPath("/app/customers") ? "tab-active" : ""}`}
+            >
+              Clientes
+            </NavLink>
+
+            {/* Staff debe ir SIEMPRE al check-in */}
+            <NavLink
+              to="/staff/checkin"
+              className={() => `tab ${isPath("/staff") ? "tab-active" : ""}`}
+            >
+              Staff
+            </NavLink>
+
+            {/* Admin solo visible si es ADMIN/OWNER/SUPERADMIN */}
+            {admin ? (
+              <NavLink
+                to="/app/admin"
+                className={() => `tab ${isPath("/app/admin") ? "tab-active" : ""}`}
+              >
+                Admin
+              </NavLink>
+            ) : (
+              <button
+                className="tab tab-disabled"
+                title="Solo ADMIN/OWNER/SUPERADMIN"
+                aria-disabled="true"
+              >
+                Admin
+              </button>
+            )}
           </div>
         </div>
 
@@ -47,15 +86,28 @@ export default function AppLayout({ children, title, subtitle }: Props) {
                 </div>
                 <span className="ml-2 hidden sm:inline text-sm">{email}</span>
               </div>
-              <ul tabIndex={0} className="menu dropdown-content bg-base-100 rounded-box z-[1] mt-2 w-64 p-2 shadow">
+              <ul
+                tabIndex={0}
+                className="menu dropdown-content bg-base-100 rounded-box z-[1] mt-2 w-64 p-2 shadow"
+              >
                 <li className="menu-title">{email}</li>
-                <li><Link to="/app">Ir al panel</Link></li>
-                {admin && <li><Link to="/app/admin">Administración</Link></li>}
-                <li><button onClick={logout}>Cerrar sesión</button></li>
+                <li>
+                  <Link to="/app">Ir al panel</Link>
+                </li>
+                {admin && (
+                  <li>
+                    <Link to="/app/admin">Administración</Link>
+                  </li>
+                )}
+                <li>
+                  <button onClick={logout}>Cerrar sesión</button>
+                </li>
               </ul>
             </div>
           ) : (
-            <Link to="/login" className="btn btn-primary btn-sm">Entrar</Link>
+            <Link to="/login" className="btn btn-primary btn-sm">
+              Entrar
+            </Link>
           )}
         </div>
       </div>
@@ -74,9 +126,17 @@ export default function AppLayout({ children, title, subtitle }: Props) {
       {/* Pie */}
       <footer className="mt-10 border-t py-6 text-center text-xs opacity-70">
         © {new Date().getFullYear()} Axioma Loyalty · {BRAND.name} ·{" "}
-        <a className="link" href="/legal/privacidad">Privacidad</a> ·{" "}
-        <a className="link" href="/legal/aviso">Aviso legal</a> ·{" "}
-        <a className="link" href="/legal/cookies">Cookies</a>
+        <a className="link" href="/legal/privacidad">
+          Privacidad
+        </a>{" "}
+        ·{" "}
+        <a className="link" href="/legal/aviso">
+          Aviso legal
+        </a>{" "}
+        ·{" "}
+        <a className="link" href="/legal/cookies">
+          Cookies
+        </a>
       </footer>
     </div>
   );
