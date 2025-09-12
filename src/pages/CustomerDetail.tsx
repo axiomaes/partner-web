@@ -1,494 +1,239 @@
+// src/pages/CustomerDetail.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
-import {
-  getCustomerRewards,
-  getCustomerVisits,
-  addVisit,
-  resendCustomerQr,
-  deleteCustomer,
-  getCustomer,
-  type CustomerLite,
-  api,
-} from "@/shared/api";
-import { useSession, isAdmin } from "@/shared/auth";
+import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
+import { api, publicCustomerQrUrl, addVisit } from "@/shared/api";
 
-export type Visit = { id: string; visitedAt: string; notes?: string | null };
-export type Reward = {
+/** --- Tipos --- */
+type Customer = {
   id: string;
-  issuedAt: string;
-  redeemedAt?: string | null;
-  note?: string | null;
-  status: "PENDING" | "REDEEMED" | "EXPIRED";
-  // ⭐ NUEVO: si el backend lo envía, mejor. Si no, lo inferimos por note.
-  kind?: "GOOGLE_REVIEW_50" | "FREE_SERVICE_10" | string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  visitsCount?: number | null;
+  createdAt?: string | null;
+  [k: string]: any; // extras que devuelva el backend
 };
 
-function fmt(d?: string | null) {
-  if (!d) return "—";
-  const dt = new Date(d);
-  return isNaN(dt.getTime()) ? d : dt.toLocaleString("es-ES");
-}
-function fmtDDMM(iso?: string | null) {
-  if (!iso) return "—";
-  const dt = new Date(iso);
-  if (isNaN(dt.getTime())) return "—";
-  return dt.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
-}
-
-// ⭐ NUEVO: helpers para reconocer recompensas por su nota/kind
-function isReview50Reward(r: Reward) {
-  const k = (r.kind || "").toUpperCase();
-  if (k === "GOOGLE_REVIEW_50") return true;
-  const n = (r.note || "").toLowerCase();
-  return n.includes("google") && (n.includes("50") || n.includes("descuento"));
-}
-function isFree10Reward(r: Reward) {
-  const k = (r.kind || "").toUpperCase();
-  if (k === "FREE_SERVICE_10") return true;
-  const n = (r.note || "").toLowerCase();
-  return n.includes("gratis") || n.includes("10 visitas") || n.includes("free");
-}
+/** --- Helpers de enmascarado --- */
+const maskPhone = (p?: string | null) => {
+  if (!p) return "—";
+  const d = p.replace(/\D/g, "");
+  if (d.length <= 4) return "•••";
+  return `${d.slice(0, 2)}•••${d.slice(-2)}`;
+};
+const maskEmail = (e?: string | null) => {
+  if (!e) return "—";
+  const [u, dom] = e.split("@");
+  if (!dom) return "—";
+  const u2 = u.length <= 2 ? "••" : u[0] + "••" + u.slice(-1);
+  return `${u2}@${dom}`;
+};
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+
   const { role } = useSession();
-  const admin = isAdmin(role);
-  const canDelete = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
-  const canRedeem = ["ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || ""));
-  const canEditPunch = ["ADMIN", "BARBER", "OWNER", "SUPERADMIN"].includes(String(role || ""));
+  const canSeeSensitive = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
+  const canAddVisit = useMemo(
+    () => ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")),
+    [role]
+  );
 
+  const [c, setC] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  const [customer, setCustomer] = useState<CustomerLite | null>(null);
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [deleting, setDeleting] = useState(false);
-  const [addingVisit, setAddingVisit] = useState(false);
-  const [sendingQr, setSendingQr] = useState(false);
-  const [redeemingId, setRedeemingId] = useState<string | null>(null);
-  const [undoing, setUndoing] = useState(false);
-
-  const headerTitle = useMemo(() => {
-    const fallback = id?.slice(0, 8) ?? "";
-    return `Cliente — ${customer?.name || fallback}`;
-  }, [id, customer]);
-
-  const CARD_SLOTS = 10;
-  const CARD_COLS = 5;
-
-  const orderedVisits = useMemo(
-    () => [...visits].sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime()),
-    [visits]
-  );
-  const recentForCard = useMemo(() => orderedVisits.slice(-CARD_SLOTS), [orderedVisits]);
-
-  // ⭐ NUEVO: KPIs y reglas
-  const totalVisits = orderedVisits.length;
-  const review50AlreadyIssued = useMemo(() => rewards.some((r) => isReview50Reward(r)), [rewards]);
-  const review50AlreadyRedeemed = useMemo(
-    () => rewards.some((r) => isReview50Reward(r) && r.status === "REDEEMED"),
-    [rewards]
-  );
-  const free10Pending = useMemo(() => {
-    // cada múltiplo de 10 visitas -> 1 recompensa FREE_SERVICE_10
-    if (totalVisits < 10) return false;
-    const expectedCount = Math.floor(totalVisits / 10);
-    const issuedCount = rewards.filter((r) => isFree10Reward(r)).length;
-    return issuedCount < expectedCount;
-  }, [totalVisits, rewards]);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    let alive = true;
-    setLoading(true);
-    setErr("");
-
+    let live = true;
     (async () => {
-      const [c, r, v] = await Promise.allSettled([getCustomer(id), getCustomerRewards(id), getCustomerVisits(id)]);
-
-      if (!alive) return;
-
-      let anyRejected = false;
-
-      if (c.status === "fulfilled") setCustomer(c.value as CustomerLite);
-      else anyRejected = true;
-
-      if (r.status === "fulfilled" && Array.isArray(r.value)) setRewards(r.value as Reward[]);
-      else if (r.status === "rejected") anyRejected = true;
-
-      if (v.status === "fulfilled" && Array.isArray(v.value)) setVisits(v.value as Visit[]);
-      else if (v.status === "rejected") anyRejected = true;
-
-      if (anyRejected) setErr("No se pudieron cargar los datos del cliente.");
-
-      setLoading(false);
+      try {
+        setLoading(true);
+        setErr(null);
+        // Endpoint estándar de detalle
+        const r = await api.get(`/customers/${encodeURIComponent(id)}`);
+        if (!live) return;
+        setC(r.data as Customer);
+      } catch (e: any) {
+        if (!live) return;
+        setErr(e?.response?.data?.message || e?.message || "No se pudo cargar el cliente.");
+      } finally {
+        if (live) setLoading(false);
+      }
     })();
-
     return () => {
-      alive = false;
+      live = false;
     };
   }, [id]);
 
-  async function reloadVisitsAndRewards() {
-    if (!id) return;
-    const [v, r] = await Promise.all([getCustomerVisits(id), getCustomerRewards(id)]);
-    setVisits(Array.isArray(v) ? (v as Visit[]) : []);
-    setRewards(Array.isArray(r) ? (r as Reward[]) : []);
-  }
-
-  async function onAddVisit() {
+  const handleAddVisit = async () => {
     if (!id) return;
     try {
-      setAddingVisit(true);
-      await addVisit(id, "Visita manual");
-      await reloadVisitsAndRewards();
+      setBusy(true);
+      setMsg(null);
+      await addVisit(id, "Visita registrada desde detalle");
+      setMsg("✅ Visita registrada.");
+      // Si el backend devuelve contador, podrías volver a cargar:
+      // const r = await api.get(`/customers/${encodeURIComponent(id)}`);
+      // setC(r.data as Customer);
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "No se pudo registrar la visita.";
-      setErr(msg);
+      setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo registrar la visita."));
     } finally {
-      setAddingVisit(false);
+      setBusy(false);
     }
-  }
+  };
 
-  async function onUndoLast() {
-    if (!id || recentForCard.length === 0) return;
-    const last = recentForCard[recentForCard.length - 1];
-    try {
-      setUndoing(true);
-      await api.delete(`/customers/${id}/visits/${last.id}`);
-      await reloadVisitsAndRewards();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "No se pudo deshacer la última visita.";
-      setErr(msg);
-    } finally {
-      setUndoing(false);
-    }
-  }
+  const copyId = () => {
+    if (!c?.id) return;
+    navigator.clipboard?.writeText(c.id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
 
-  async function onResendQr() {
-    if (!id) return;
-    try {
-      setSendingQr(true);
-      await resendCustomerQr(id);
-      alert("QR reenviado (si el proveedor está configurado).");
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "No se pudo reenviar el QR.";
-      setErr(msg);
-    } finally {
-      setSendingQr(false);
-    }
-  }
-
-  async function onRedeem(rewardId: string) {
-    if (!id) return;
-    if (!canRedeem) {
-      setErr("No tienes permiso para canjear recompensas.");
-      return;
-    }
-    const ok = confirm("¿Canjear esta recompensa ahora?");
-    if (!ok) return;
-
-    try {
-      setRedeemingId(rewardId);
-      await api.post(`/customers/${id}/rewards/redeem`, { rewardId });
-      await reloadVisitsAndRewards();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "No se pudo canjear la recompensa.";
-      setErr(msg);
-    } finally {
-      setRedeemingId(null);
-    }
-  }
-
-  // ⭐ NUEVO: emitir recompensas desde UI si tu API ya lo soporta
-  async function issueReview50() {
-    if (!id) return;
-    try {
-      await api.post(`/customers/${id}/rewards/issue`, {
-        kind: "GOOGLE_REVIEW_50",
-        note: "50% descuento por reseña en Google",
-      });
-      await reloadVisitsAndRewards();
-    } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "No se pudo emitir la recompensa de reseña.");
-    }
-  }
-  async function issueFree10() {
-    if (!id) return;
-    try {
-      await api.post(`/customers/${id}/rewards/issue`, {
-        kind: "FREE_SERVICE_10",
-        note: "Servicio gratis por 10 visitas",
-      });
-      await reloadVisitsAndRewards();
-    } catch (e: any) {
-      setErr(e?.response?.data?.message || e?.message || "No se pudo emitir la recompensa de 10 visitas.");
-    }
-  }
-
-  async function onDelete() {
-    if (!id || !canDelete) return;
-    const ok = confirm(`¿Eliminar definitivamente ${customer?.name || "este cliente"}?`);
-    if (!ok) return;
-    try {
-      setDeleting(true);
-      await deleteCustomer(id);
-      nav("/app/customers", { replace: true });
-    } catch (e: any) {
-      const status = e?.response?.status;
-      const apiMsg = e?.response?.data?.message;
-      const msg =
-        status === 401 || status === 403
-          ? apiMsg || "No tienes permiso para eliminar (usa un usuario ADMIN/OWNER/SUPERADMIN)."
-          : apiMsg || e?.message || "No se pudo eliminar el cliente.";
-      setErr(msg);
-    } finally {
-      setDeleting(false);
-    }
-  }
+  const title = c?.name ? `Cliente · ${c.name}` : "Cliente";
 
   return (
-    <AppLayout title={headerTitle} subtitle="Detalle del cliente">
+    <AppLayout title={title} subtitle="Ficha del cliente y acciones rápidas.">
+      {/* Acciones superiores */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Link to="/app/customers/list" className="btn btn-ghost">
+          ← Volver al listado
+        </Link>
+        {canAddVisit && (
+          <button
+            className={`btn btn-primary ${busy ? "loading" : ""}`}
+            onClick={handleAddVisit}
+            disabled={busy}
+          >
+            {busy ? "" : "Añadir visita"}
+          </button>
+        )}
+        {/* Abrir check-in con deep link */}
+        <Link to={`/staff/checkin?cid=${encodeURIComponent(id || "")}`} className="btn btn-outline">
+          Abrir en Check-in
+        </Link>
+      </div>
+
+      {msg && (
+        <div className={`alert ${msg.startsWith("❌") ? "alert-warning" : "alert-info"} mb-4`}>
+          <span>{msg}</span>
+        </div>
+      )}
       {err && (
-        <div className="alert alert-warning mb-4" aria-live="polite">
+        <div className="alert alert-warning mb-4">
           <span>{err}</span>
         </div>
       )}
 
-      {/* ⭐ NUEVO: Banners de reglas */}
-      {!review50AlreadyIssued && (
-        <div className="alert alert-info mb-3">
-          <div>
-            <b>Promo reseña en Google:</b> si el cliente deja una reseña, obtiene <b>50% de descuento</b> (una sola vez).
-          </div>
-          {canRedeem && (
-            <button className="btn btn-sm btn-primary mt-2" onClick={issueReview50}>
-              Emitir recompensa 50% (manual)
-            </button>
-          )}
-        </div>
-      )}
-      {free10Pending && (
-        <div className="alert alert-success mb-3">
-          <div>
-            ¡Hito alcanzado! <b>{totalVisits}</b> visitas ⇒ falta emitir <b>servicio gratis</b> por las 10 visitas.
-          </div>
-          {canRedeem && (
-            <button className="btn btn-sm btn-primary mt-2" onClick={issueFree10}>
-              Emitir “Servicio gratis”
-            </button>
-          )}
-        </div>
-      )}
+      {/* Contenido */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Datos */}
+        <section className="card bg-base-100 shadow-sm border border-base-200">
+          <div className="card-body">
+            <h3 className="card-title">Datos del cliente</h3>
 
-      {/* Resumen corto */}
-      <div className="mb-4 text-sm opacity-80">
-        Total visitas: <b>{totalVisits}</b> ·{" "}
-        Reseña 50%: {review50AlreadyRedeemed ? <b>canjeada</b> : review50AlreadyIssued ? "pendiente" : "no emitida"}
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        {/* ← Volver robusto: historial o fallback al listado */}
-        <button
-          type="button"
-          onClick={() => (window.history.length > 1 ? nav(-1) : nav("/app/customers"))}
-          className="btn btn-ghost btn-sm"
-          title="Volver"
-        >
-          ← Volver
-        </button>
-
-        <button
-          onClick={onAddVisit}
-          className={`btn btn-primary btn-sm ${addingVisit ? "loading" : ""}`}
-          disabled={addingVisit || !id || !canEditPunch}
-          title={!canEditPunch ? "Tu rol no puede registrar visitas" : undefined}
-        >
-          {addingVisit ? "" : "Añadir visita"}
-        </button>
-        <button
-          onClick={onResendQr}
-          className={`btn btn-outline btn-sm ${sendingQr ? "loading" : ""}`}
-          disabled={sendingQr || !id}
-        >
-          {sendingQr ? "" : "Reenviar QR"}
-        </button>
-        {canDelete && (
-          <button
-            onClick={onDelete}
-            className={`btn btn-error btn-sm ${deleting ? "loading" : ""}`}
-            disabled={deleting}
-          >
-            {deleting ? "" : "Eliminar cliente"}
-          </button>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="p-4 flex items-center gap-2">
-          <span className="loading loading-spinner" />
-          Cargando…
-        </div>
-      ) : (
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Tarjeta de visitas */}
-          <div className="card bg-base-100 shadow">
-            <div className="card-body">
-              <h3 className="card-title">Tarjeta de visitas</h3>
-              <div className="rounded-2xl border border-base-300 bg-base-200 p-3">
-                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${CARD_COLS}, minmax(0,1fr))` }}>
-                  {Array.from({ length: CARD_SLOTS }).map((_, i) => {
-                    const v = recentForCard[i];
-                    const filled = !!v;
-                    return (
-                      <div
-                        key={i}
-                        className={[
-                          "h-16 sm:h-20 rounded-xl border bg-base-100 flex items-center justify-center",
-                          filled ? "border-emerald-300 ring-1 ring-emerald-200" : "border-base-300",
-                        ].join(" ")}
-                      >
-                        {filled ? (
-                          <span className="text-sm font-medium text-base-content">{fmtDDMM(v.visitedAt)}</span>
-                        ) : (
-                          <span className="text-xs text-base-content/50">—</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+            {loading ? (
+              <div className="space-y-2">
+                <div className="skeleton h-6 w-48" />
+                <div className="skeleton h-4 w-72" />
+                <div className="skeleton h-4 w-40" />
+                <div className="skeleton h-4 w-60" />
               </div>
+            ) : !c ? (
+              <p className="opacity-70">No se encontró el cliente.</p>
+            ) : (
+              <dl className="grid grid-cols-2 gap-y-2 text-sm">
+                <dt className="opacity-70">Nombre</dt>
+                <dd className="text-right">{c.name || "—"}</dd>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm opacity-70">
-                  Visitas: <b>{orderedVisits.length}</b> (mostrando últimas {CARD_SLOTS})
-                </span>
-                {canEditPunch && (
+                <dt className="opacity-70">Teléfono</dt>
+                <dd className="text-right">
+                  {canSeeSensitive ? c.phone || "—" : maskPhone(c.phone)}
+                </dd>
+
+                <dt className="opacity-70">Email</dt>
+                <dd className="text-right">
+                  {canSeeSensitive ? c.email || "—" : maskEmail(c.email)}
+                </dd>
+
+                <dt className="opacity-70">Visitas</dt>
+                <dd className="text-right">{c.visitsCount ?? "—"}</dd>
+
+                <dt className="opacity-70">Alta</dt>
+                <dd className="text-right">
+                  {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                </dd>
+
+                {canSeeSensitive && (
                   <>
-                    <button
-                      onClick={onAddVisit}
-                      className={`btn btn-sm btn-primary ${addingVisit ? "loading" : ""}`}
-                      disabled={addingVisit}
-                    >
-                      {addingVisit ? "" : "+ Añadir visita (hoy)"}
-                    </button>
-                    <button
-                      onClick={onUndoLast}
-                      className={`btn btn-sm btn-outline ${undoing ? "loading" : ""}`}
-                      disabled={undoing || recentForCard.length === 0}
-                      title={recentForCard.length === 0 ? "Sin visitas para deshacer" : undefined}
-                    >
-                      {undoing ? "" : "↶ Deshacer última"}
-                    </button>
+                    <dt className="opacity-70">ID</dt>
+                    <dd className="text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <span className="font-mono text-xs">{c.id}</span>
+                        <button className="btn btn-ghost btn-xs" onClick={copyId} title="Copiar ID">
+                          {copied ? "✔ Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                    </dd>
                   </>
                 )}
-                {!canEditPunch && (
-                  <span className="text-xs opacity-60">Solo ADMIN / BARBER / OWNER / SUPERADMIN pueden editar visitas.</span>
-                )}
-              </div>
-            </div>
+              </dl>
+            )}
           </div>
+        </section>
 
-          {/* Visitas tabla */}
-          <div className="card bg-base-100 shadow">
-            <div className="card-body">
-              <h3 className="card-title">Visitas</h3>
-              {visits.length === 0 ? (
-                <div className="text-sm opacity-60">Sin visitas.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="table table-compact">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Notas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visits.map((v) => (
-                        <tr key={v.id}>
-                          <td>{fmt(v.visitedAt)}</td>
-                          <td>{v.notes || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+        {/* QR */}
+        <section className="card bg-base-100 shadow-sm border border-base-200">
+          <div className="card-body items-center text-center">
+            <h3 className="card-title">QR del cliente</h3>
+
+            {loading ? (
+              <div className="skeleton h-56 w-56" />
+            ) : !c ? (
+              <div className="opacity-70 text-sm">No disponible.</div>
+            ) : (
+              <>
+                {/* Mostramos la imagen QR para TODOS los roles.
+                    Si también quieres ocultar la imagen a BARBER, envíame un ping y lo cambio a canSeeSensitive. */}
+                <div className="p-4 rounded-box border border-base-300 bg-base-200">
+                  <img
+                    src={publicCustomerQrUrl(c.id)}
+                    alt="QR del cliente"
+                    className="w-56 h-56 object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0.4";
+                    }}
+                  />
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Recompensas */}
-          <div className="card bg-base-100 shadow md:col-span-2">
-            <div className="card-body">
-              <h3 className="card-title">Recompensas</h3>
-              {rewards.length === 0 ? (
-                <div className="text-sm opacity-60">Sin recompensas.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="table table-compact">
-                    <thead>
-                      <tr>
-                        <th>Tipo</th>
-                        <th>Estado</th>
-                        <th>Emitida</th>
-                        <th>Canjeada</th>
-                        <th>Nota</th>
-                        <th className="w-1">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rewards.map((r) => (
-                        <tr key={r.id}>
-                          <td className="text-xs">
-                            {isReview50Reward(r) ? "Reseña 50%" : isFree10Reward(r) ? "Gratis x10" : r.kind || "—"}
-                          </td>
-                          <td>
-                            {r.status === "REDEEMED" ? (
-                              <span className="badge badge-success gap-1">✓ Canjeada</span>
-                            ) : r.status === "PENDING" ? (
-                              <span className="badge badge-outline">PENDIENTE</span>
-                            ) : (
-                              <span className="badge">EXPIRADA</span>
-                            )}
-                          </td>
-                          <td>{fmt(r.issuedAt)}</td>
-                          <td>{fmt(r.redeemedAt)}</td>
-                          <td style={{ whiteSpace: "pre-wrap" }}>{r.note || "—"}</td>
-                          <td className="text-right">
-                            {r.status === "PENDING" && canRedeem ? (
-                              <button
-                                onClick={() => onRedeem(r.id)}
-                                className={`btn btn-xs btn-primary ${redeemingId === r.id ? "loading" : ""}`}
-                                disabled={redeemingId === r.id}
-                                title="Canjear recompensa"
-                              >
-                                {redeemingId === r.id ? "" : "Canjear"}
-                              </button>
-                            ) : (
-                              <span className="text-xs opacity-60">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {!canRedeem && (
-                    <p className="text-xs opacity-60 mt-2">
-                      Solo ADMIN / OWNER / SUPERADMIN pueden canjear recompensas.
-                    </p>
+                <div className="join mt-4">
+                  {/* Botón “Abrir PNG” solo para roles permitidos */}
+                  {canSeeSensitive && (
+                    <a
+                      className="btn btn-primary join-item"
+                      href={publicCustomerQrUrl(c.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Abrir PNG
+                    </a>
                   )}
+                  <button className="btn join-item" onClick={() => nav(-1)}>
+                    Cerrar
+                  </button>
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
-
-      {!admin && <p className="text-xs opacity-60 mt-6">Algunas columnas pueden estar ocultas según tu rol.</p>}
+        </section>
+      </div>
     </AppLayout>
   );
 }
