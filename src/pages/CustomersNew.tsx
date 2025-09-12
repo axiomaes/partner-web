@@ -11,7 +11,7 @@ export default function CustomersNew() {
   const navigate = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
-  const isStaff = !admin; // cualquier rol no-admin
+  const isStaff = !admin;
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+34");
@@ -20,7 +20,6 @@ export default function CustomersNew() {
   const [msg, setMsg] = useState<string>("");
   const [created, setCreated] = useState<Created | null>(null);
 
-  // Ruta pública del PNG del QR
   const qrUrl = created
     ? `${api.defaults.baseURL}/public/customers/${encodeURIComponent(created.id)}/qr.png`
     : "";
@@ -32,12 +31,14 @@ export default function CustomersNew() {
     setMsg("");
     setCreated(null);
     try {
-      const c = await createCustomer(name.trim(), phone.trim(), birthday || undefined);
+      // Ahora enviamos birthday (si viene)
+      const c = await createCustomer(
+        name.trim(),
+        phone.trim(),
+        birthday || undefined
+      );
       setCreated(c);
-
-      // si es staff, “ocultamos” el teléfono tras crear
       if (isStaff) setPhone("+34");
-
       setMsg(
         c.existed
           ? "⚠️ Este cliente ya existía. Mostramos su QR para comenzar a usarlo."
@@ -65,9 +66,7 @@ export default function CustomersNew() {
             <h2 className="card-title">Datos del cliente</h2>
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Nombre</span>
-                </label>
+                <label className="label"><span className="label-text">Nombre</span></label>
                 <input
                   className="input input-bordered"
                   placeholder="Nombre y apellido"
@@ -78,9 +77,7 @@ export default function CustomersNew() {
               </div>
 
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Teléfono</span>
-                </label>
+                <label className="label"><span className="label-text">Teléfono</span></label>
                 <input
                   type={isStaff ? "password" : "tel"}
                   inputMode="tel"
@@ -92,16 +89,14 @@ export default function CustomersNew() {
                 />
                 <label className="label">
                   <span className="label-text-alt">
-                    Formato recomendado: <code className="font-mono">+34</code> seguido del número.
-                    {isStaff && " (oculto para staff)"}
+                    Formato recomendado: <code className="font-mono">+34</code> seguido del número
+                    {isStaff && " (oculto para staff)"}.
                   </span>
                 </label>
               </div>
 
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Cumpleaños</span>
-                </label>
+                <label className="label"><span className="label-text">Cumpleaños</span></label>
                 <input
                   type="date"
                   className="input input-bordered"
@@ -115,19 +110,9 @@ export default function CustomersNew() {
 
               <div className="flex items-center gap-2">
                 <button className="btn btn-primary" disabled={submitting} type="submit">
-                  {submitting ? (
-                    <>
-                      <span className="loading loading-spinner" />
-                      Creando…
-                    </>
-                  ) : (
-                    "Crear cliente"
-                  )}
+                  {submitting ? (<><span className="loading loading-spinner" />Creando…</>) : "Crear cliente"}
                 </button>
-
-                <Link to="/app/customers/list" className="btn btn-ghost">
-                  Cancelar
-                </Link>
+                <Link to="/app/customers/list" className="btn btn-ghost">Cancelar</Link>
               </div>
 
               {msg && (
