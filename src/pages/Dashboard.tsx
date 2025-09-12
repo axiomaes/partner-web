@@ -21,7 +21,7 @@ export default function Dashboard() {
   const adminOrAbove = isAdmin(s.role); // ADMIN | OWNER | SUPERADMIN
   const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role) || isAdmin(s.role);
 
-  // Estado WhatsApp (solo informativo)
+  // Estado WhatsApp (informativo)
   const [wa, setWa] = useState<WaStatus | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -33,29 +33,28 @@ export default function Dashboard() {
         else setWa(null);
       })
       .catch(() => mounted && setWa(null));
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   return (
     <AppLayout title="Panel" subtitle="Resumen general">
-      {/* Accesos rápidos de navegación */}
+      {/* Accesos rápidos (todas rutas existentes en tu AppRouter) */}
       <div className="mb-4 flex flex-wrap gap-2">
-        <Link to="/app/customers" className="btn btn-primary btn-sm">
+        <Link to="/app/customers" className="btn btn-primary btn-sm" aria-label="Listado de clientes">
           Listado de clientes
         </Link>
-        <Link to="/app/customers/new" className="btn btn-outline btn-sm">
+        <Link to="/app/customers/new" className="btn btn-outline btn-sm" aria-label="Crear cliente">
           Crear cliente
         </Link>
-        <Link to="/staff/checkin" className="btn btn-outline btn-sm">
+        <Link to="/staff/checkin" className="btn btn-outline btn-sm" aria-label="Escanear QR">
           Escanear QR
         </Link>
-        {ownerOrAbove && (
-          <Link to="/app/users" className="btn btn-outline btn-sm">
+        {/* Para gestión de staff, llevamos al AdminPanel y anclamos a la sección de staff */}
+        {ownerOrAbove ? (
+          <Link to="/app/admin#staff" className="btn btn-outline btn-sm" aria-label="Gestionar staff">
             Gestionar staff
           </Link>
-        )}
+        ) : null}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -70,7 +69,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Estado de WhatsApp (informativo) */}
+        {/* Estado de WhatsApp */}
         <div className="card bg-base-100 shadow">
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
@@ -80,23 +79,14 @@ export default function Dashboard() {
               </span>
             </div>
             <div className="text-sm space-y-1">
-              <div>
-                <span className="opacity-70">Emisor:</span>{" "}
-                {wa?.from ? <span className="font-mono">{wa.from}</span> : "—"}
-              </div>
-              <div>
-                <span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}
-              </div>
-              <div>
-                <span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}
-              </div>
-              <div>
-                <span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}
-              </div>
+              <div><span className="opacity-70">Emisor:</span> {wa?.from ? <span className="font-mono">{wa.from}</span> : "—"}</div>
+              <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
+              <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
+              <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
             </div>
             {adminOrAbove && (
               <div className="card-actions mt-3">
-                <Link to="/app/customers" className="btn btn-sm btn-primary">
+                <Link to="/app/customers" className="btn btn-sm btn-primary" aria-label="Reenviar QR desde clientes">
                   Reenviar QR (desde clientes)
                 </Link>
               </div>
@@ -112,29 +102,29 @@ export default function Dashboard() {
               Gestiona el listado, crea clientes y accede al detalle para sumar visitas o canjear recompensas.
             </p>
             <div className="join">
-              <Link to="/app/customers" className="btn btn-primary join-item">
+              <Link to="/app/customers" className="btn btn-primary join-item" aria-label="Abrir listado de clientes">
                 Abrir listado
               </Link>
-              <Link to="/app/customers/new" className="btn btn-outline join-item">
+              <Link to="/app/customers/new" className="btn btn-outline join-item" aria-label="Crear cliente">
                 Crear cliente
               </Link>
-              <Link to="/staff/checkin" className="btn btn-outline join-item">
+              <Link to="/staff/checkin" className="btn btn-outline join-item" aria-label="Escanear QR">
                 Escanear QR
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Tarjeta Staff (solo OWNER/ADMIN/SUPERADMIN) */}
+        {/* Tarjeta Staff (enlace operativo a AdminPanel) */}
         {ownerOrAbove && (
-          <div className="card bg-base-100 shadow lg:col-span-2">
+          <div className="card bg-base-100 shadow lg:col-span-2" id="staff">
             <div className="card-body">
               <h3 className="card-title">Equipo (staff)</h3>
               <p className="text-sm opacity-70">
                 Como OWNER/ADMIN puedes crear y gestionar cuentas de tu equipo.
               </p>
               <div className="join">
-                <Link to="/app/users" className="btn btn-ghost join-item">
+                <Link to="/app/admin#staff" className="btn btn-ghost join-item" aria-label="Abrir gestión de usuarios">
                   Abrir gestión de usuarios
                 </Link>
                 <button className="btn btn-disabled join-item">Crear staff (próximamente)</button>
