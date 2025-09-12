@@ -11,7 +11,7 @@ type Customer = {
   name?: string | null;
   phone?: string | null;
   email?: string | null;
-  birthday?: string | null;  // YYYY-MM-DD
+  birthday?: string | null; // YYYY-MM-DD
   visitsCount?: number | null;
   createdAt?: string | null;
   [k: string]: any;
@@ -45,7 +45,6 @@ const waHref = (phone?: string | null, text?: string) => {
 function progress10(total?: number | null) {
   const v = Math.max(0, Number(total || 0));
   const cycle = v % 10; // 0..9
-  // Para pintar casillas: si v>0 y cycle===0 significa ciclo completo (10/10).
   const filled = cycle === 0 && v > 0 ? 10 : cycle;
   const to5 = Math.max(0, 5 - filled);
   const to10 = Math.max(0, 10 - filled);
@@ -57,7 +56,12 @@ export default function CustomerDetail() {
   const nav = useNavigate();
 
   const { role } = useSession();
-  const canSeeSensitive = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
+
+  // Contacto completo: ADMIN / OWNER / SUPERADMIN
+  const canSeeContact = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
+  // ID del cliente: **solo** ADMIN / SUPERADMIN (oculto para OWNER y BARBER)
+  const canSeeId = isAdmin(role) || isSuperAdmin(role);
+
   const canAddVisit = useMemo(
     () => ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")),
     [role]
@@ -69,7 +73,6 @@ export default function CustomerDetail() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   // override OWNER modal
   const [needsOverride, setNeedsOverride] = useState<null | { action: () => Promise<void> }>(null);
@@ -91,7 +94,9 @@ export default function CustomerDetail() {
         if (live) setLoading(false);
       }
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [id]);
 
   async function tryRegister() {
@@ -101,11 +106,7 @@ export default function CustomerDetail() {
       setBusy(true);
       await addVisit(id, "Visita registrada desde detalle");
       setMsg("✅ Visita registrada.");
-      // Refresco optimista del contador para actualizar la tarjeta
       setC((old) => (old ? { ...old, visitsCount: (Number(old.visitsCount || 0) + 1) } : old));
-      // Si prefieres recargar del server:
-      // const r = await api.get(`/customers/${encodeURIComponent(id)}`);
-      // setC(r.data as Customer);
     } catch (e: any) {
       if (isDuplicateVisitError(e)) {
         setMsg("⚠️ Ya se registró una visita hoy. Requiere autorización del OWNER.");
@@ -123,14 +124,6 @@ export default function CustomerDetail() {
     }
   }
 
-  const copyId = () => {
-    if (!c?.id) return;
-    navigator.clipboard?.writeText(c.id).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    });
-  };
-
   const title = c?.name ? `Cliente · ${c.name}` : "Cliente";
   const prog = progress10(c?.visitsCount);
 
@@ -138,36 +131,70 @@ export default function CustomerDetail() {
     <AppLayout title={title} subtitle="Ficha del cliente y acciones rápidas.">
       {/* Barra superior */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link to="/app/customers/list" className="btn btn-ghost">← Volver al listado</Link>
+        <Link to="/app/customers/list" className="btn btn-ghost">
+          ← Volver al listado
+        </Link>
         {canAddVisit && (
-          <button className={`btn btn-primary ${busy ? "loading" : ""}`} disabled={busy} onClick={tryRegister}>
+          <button
+            className={`btn btn-primary ${busy ? "loading" : ""}`}
+            disabled={busy}
+            onClick={tryRegister}
+          >
             {busy ? "" : "Añadir visita"}
           </button>
         )}
-        <Link to={`/staff/checkin?cid=${encodeURIComponent(id || "")}`} className="btn btn-outline">
+        <Link
+          to={`/staff/checkin?cid=${encodeURIComponent(id || "")}`}
+          className="btn btn-outline"
+        >
           Abrir en Check-in
         </Link>
         {c?.phone && (
-          <a className="btn btn-ghost" href={waHref(c.phone)} target="_blank" rel="noreferrer">
+          <a
+            className="btn btn-ghost"
+            href={waHref(c.phone)}
+            target="_blank"
+            rel="noreferrer"
+          >
             Saludar por WhatsApp
           </a>
         )}
       </div>
 
-      {msg && <div className={`alert ${msg.startsWith("❌") ? "alert-warning" : "alert-info"} mb-4`}><span>{msg}</span></div>}
-      {err && <div className="alert alert-warning mb-4"><span>{err}</span></div>}
+      {msg && (
+        <div
+          className={`alert ${
+            msg.startsWith("❌") ? "alert-warning" : "alert-info"
+          } mb-4`}
+        >
+          <span>{msg}</span>
+        </div>
+      )}
+      {err && (
+        <div className="alert alert-warning mb-4">
+          <span>{err}</span>
+        </div>
+      )}
 
       {/* Modal Override */}
-      <input type="checkbox" className="modal-toggle" checked={!!needsOverride} readOnly />
+      <input
+        type="checkbox"
+        className="modal-toggle"
+        checked={!!needsOverride}
+        readOnly
+      />
       {needsOverride && (
         <div className="modal modal-open">
           <div className="modal-box">
             <h3 className="font-bold text-lg mb-2">Se necesita autorización</h3>
             <p className="text-sm opacity-80">
-              Ya existe una visita hoy para este cliente. Solo un <b>OWNER</b> puede autorizar un segundo registro.
+              Ya existe una visita hoy para este cliente. Solo un <b>OWNER</b> puede
+              autorizar un segundo registro.
             </p>
             <div className="modal-action">
-              <button className="btn" onClick={() => setNeedsOverride(null)}>Cancelar</button>
+              <button className="btn" onClick={() => setNeedsOverride(null)}>
+                Cancelar
+              </button>
               {isOwnerRole ? (
                 <button
                   className={`btn btn-primary ${busy ? "loading" : ""}`}
@@ -179,7 +206,12 @@ export default function CustomerDetail() {
                       setNeedsOverride(null);
                       setMsg("✅ Visita registrada con autorización del OWNER.");
                     } catch (e: any) {
-                      setMsg("❌ " + (e?.response?.data?.message || e?.message || "No se pudo autorizar."));
+                      setMsg(
+                        "❌ " +
+                          (e?.response?.data?.message ||
+                            e?.message ||
+                            "No se pudo autorizar.")
+                      );
                     } finally {
                       setBusy(false);
                     }
@@ -188,11 +220,16 @@ export default function CustomerDetail() {
                   {busy ? "" : "Autorizar y registrar"}
                 </button>
               ) : (
-                <span className="text-xs opacity-70">Inicie sesión un OWNER para autorizar.</span>
+                <span className="text-xs opacity-70">
+                  Inicie sesión un OWNER para autorizar.
+                </span>
               )}
             </div>
           </div>
-          <div className="modal-backdrop" onClick={() => setNeedsOverride(null)} />
+          <div
+            className="modal-backdrop"
+            onClick={() => setNeedsOverride(null)}
+          />
         </div>
       )}
 
@@ -217,32 +254,36 @@ export default function CustomerDetail() {
                 <dd className="text-right">{c.name || "—"}</dd>
 
                 <dt className="opacity-70">Teléfono</dt>
-                <dd className="text-right">{canSeeSensitive ? c.phone || "—" : maskPhone(c.phone)}</dd>
+                <dd className="text-right">
+                  {canSeeContact ? c.phone || "—" : maskPhone(c.phone)}
+                </dd>
 
                 <dt className="opacity-70">Email</dt>
-                <dd className="text-right">{canSeeSensitive ? c.email || "—" : maskEmail(c.email)}</dd>
+                <dd className="text-right">
+                  {canSeeContact ? c.email || "—" : maskEmail(c.email)}
+                </dd>
 
                 <dt className="opacity-70">Cumpleaños</dt>
                 <dd className="text-right">
-                  {c.birthday ? new Date(c.birthday + "T00:00:00").toLocaleDateString() : "—"}
+                  {c.birthday
+                    ? new Date(c.birthday + "T00:00:00").toLocaleDateString()
+                    : "—"}
                 </dd>
 
                 <dt className="opacity-70">Visitas totales</dt>
                 <dd className="text-right">{c.visitsCount ?? "—"}</dd>
 
                 <dt className="opacity-70">Alta</dt>
-                <dd className="text-right">{c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}</dd>
+                <dd className="text-right">
+                  {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
+                </dd>
 
-                {canSeeSensitive && (
+                {/* ID SOLO para ADMIN / SUPERADMIN */}
+                {canSeeId && (
                   <>
                     <dt className="opacity-70">ID</dt>
                     <dd className="text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <span className="font-mono text-xs">{c.id}</span>
-                        <button className="btn btn-ghost btn-xs" onClick={copyId} title="Copiar ID">
-                          {copied ? "✔ Copiado" : "Copiar"}
-                        </button>
-                      </div>
+                      <span className="font-mono text-xs">{c.id}</span>
                     </dd>
                   </>
                 )}
@@ -266,23 +307,32 @@ export default function CustomerDetail() {
                     src={publicCustomerQrUrl(c.id)}
                     alt="QR del cliente"
                     className="w-56 h-56 object-contain"
-                    onError={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0.4";
+                    }}
                   />
                 </div>
                 <div className="join mt-4">
                   {(isOwner(role) || isAdmin(role) || isSuperAdmin(role)) && (
-                    <a className="btn btn-primary join-item" href={publicCustomerQrUrl(c.id)} target="_blank" rel="noreferrer">
+                    <a
+                      className="btn btn-primary join-item"
+                      href={publicCustomerQrUrl(c.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Abrir PNG
                     </a>
                   )}
-                  <button className="btn join-item" onClick={() => nav(-1)}>Cerrar</button>
+                  <button className="btn join-item" onClick={() => nav(-1)}>
+                    Cerrar
+                  </button>
                 </div>
               </>
             )}
           </div>
         </section>
 
-        {/* Tarjeta de visitas (10 casillas) */}
+        {/* Tarjeta de visitas (10 casillas) — debajo de los datos */}
         <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
@@ -290,17 +340,23 @@ export default function CustomerDetail() {
               <div className="text-sm opacity-70">Ciclo actual: {prog.filled}/10</div>
             </div>
 
-            {/* Progresos 5 y 10 */}
             <div className="mb-3 text-sm">
-              <span className={`badge mr-2 ${prog.filled >= 5 ? "badge-success" : "badge-ghost"}`}>
+              <span
+                className={`badge mr-2 ${
+                  prog.filled >= 5 ? "badge-success" : "badge-ghost"
+                }`}
+              >
                 {prog.filled >= 5 ? "50% disponible" : `${5 - prog.filled} para 50%`}
               </span>
-              <span className={`badge ${prog.filled >= 10 ? "badge-success" : "badge-ghost"}`}>
+              <span
+                className={`badge ${
+                  prog.filled >= 10 ? "badge-success" : "badge-ghost"
+                }`}
+              >
                 {prog.filled >= 10 ? "Gratis disponible" : `${10 - prog.filled} para gratis`}
               </span>
             </div>
 
-            {/* 10 casillas (2 filas de 5) */}
             <div className="grid grid-cols-5 gap-3 max-w-xl">
               {Array.from({ length: 10 }).map((_, i) => {
                 const filled = i < prog.filled;
@@ -308,7 +364,9 @@ export default function CustomerDetail() {
                   <div
                     key={i}
                     className={`h-16 rounded-2xl border grid place-items-center text-xl font-semibold ${
-                      filled ? "bg-brand-primary text-white border-brand-primary" : "bg-base-200 border-base-300 text-base-content/40"
+                      filled
+                        ? "bg-brand-primary text-white border-brand-primary"
+                        : "bg-base-200 border-base-300 text-base-content/40"
                     }`}
                   >
                     {filled ? "★" : "—"}
@@ -317,7 +375,6 @@ export default function CustomerDetail() {
               })}
             </div>
 
-            {/* Acciones de tarjeta */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 className={`btn btn-primary ${busy ? "loading" : ""}`}
@@ -327,14 +384,19 @@ export default function CustomerDetail() {
                 {busy ? "" : "Añadir visita (hoy)"}
               </button>
 
-              {/* Botones de recompensas: placeholder manual; enlaza a tu flujo real si lo tienes */}
               {prog.filled >= 5 && prog.filled < 10 && (
-                <button className="btn btn-outline">Emitir recompensa 50% (manual)</button>
+                <button className="btn btn-outline">
+                  Emitir recompensa 50% (manual)
+                </button>
               )}
               {prog.filled >= 10 && (
-                <button className="btn btn-outline">Emitir recompensa gratis (manual)</button>
+                <button className="btn btn-outline">
+                  Emitir recompensa gratis (manual)
+                </button>
               )}
-              <span className="opacity-50 text-xs">* Las recompensas pueden integrarse con tu backend cuando quieras.</span>
+              <span className="opacity-50 text-xs">
+                * Las recompensas pueden integrarse con tu backend cuando quieras.
+              </span>
             </div>
           </div>
         </section>
