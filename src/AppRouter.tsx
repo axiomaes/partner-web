@@ -63,7 +63,7 @@ export default function AppRouter() {
         <Route path="/portal" element={<CustomerOTP />} />
         <Route path="/portal/points" element={<PortalPoints />} />
 
-        {/* Staff check-in (siempre aquí, incluso para admin) */}
+        {/* Staff check-in */}
         <Route
           path="/staff/checkin"
           element={
@@ -84,7 +84,7 @@ export default function AppRouter() {
           }
         />
 
-        {/* AdminPanel visible */}
+        {/* Admin */}
         <Route
           path="/app/admin"
           element={
@@ -93,8 +93,6 @@ export default function AppRouter() {
             </RouteGuard>
           }
         />
-
-        {/* Gestión de usuarios */}
         <Route
           path="/app/users"
           element={
@@ -105,22 +103,30 @@ export default function AppRouter() {
         />
 
         {/* Clientes */}
+        {/* 🔁 Fuerza que /app/customers vaya al listado */}
+        <Route path="/app/customers" element={<Navigate to="/app/customers/list" replace />} />
+
+        {/* Listado real */}
         <Route
-          path="/app/customers"
+          path="/app/customers/list"
           element={
             <RouteGuard>
-              <Customers /> {/* ⬅️ LISTADO */}
+              <Customers />
             </RouteGuard>
           }
         />
+
+        {/* Alta */}
         <Route
           path="/app/customers/new"
           element={
             <RouteGuard>
-              <CustomersNew /> {/* ⬅️ ALTA */}
+              <CustomersNew />
             </RouteGuard>
           }
         />
+
+        {/* Detalle */}
         <Route
           path="/app/customers/:id"
           element={
