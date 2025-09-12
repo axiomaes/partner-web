@@ -1,38 +1,26 @@
-// src/pages/Dashboard.tsx
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
-import { api } from "@/shared/api";
-
-type WaStatus = {
-  enabled?: boolean;
-  from?: string | null;
-  dailyLimit?: number | null;
-  ratePerMinute?: number | null;
-  monthlyCap?: number | null;
-};
+import { getWaStatus, type WaStatus } from "@/shared/api";
 
 export default function Dashboard() {
   const s = useSession();
   const first = (s.name || s.email || "").split(" ")[0] || "¡hola!";
 
-  const adminOrAbove = isAdmin(s.role); // ADMIN | OWNER | SUPERADMIN
+  const adminOrAbove = isAdmin(s.role);
   const ownerOrAbove = isOwner(s.role) || isSuperAdmin(s.role);
 
-  // Estado WhatsApp (informativo)
-  const [wa, setWa] = useState<WaStatus | null>(null);
+  const [wa, setWa] = useState<WaStatus | null | "NA">("NA"); // "NA" → no hay endpoint
+
   useEffect(() => {
-    let mounted = true;
-    api
-      .get("/wa/status", { validateStatus: () => true })
-      .then((r) => {
-        if (!mounted) return;
-        if (r.status >= 200 && r.status < 300) setWa(r.data as WaStatus);
-        else setWa(null);
-      })
-      .catch(() => mounted && setWa(null));
-    return () => { mounted = false; };
+    let alive = true;
+    (async () => {
+      const st = await getWaStatus();
+      if (!alive) return;
+      setWa(st ?? "NA");
+    })();
+    return () => { alive = false; };
   }, []);
 
   return (
@@ -63,16 +51,24 @@ export default function Dashboard() {
           <div className="card-body">
             <div className="flex items-center justify-between gap-2">
               <h3 className="card-title">WhatsApp</h3>
-              <span className={`badge ${wa?.enabled ? "badge-success" : "badge-ghost"}`}>
-                {wa?.enabled ? "Activo" : "Desactivado"}
+              <span className={`badge ${
+                wa && wa !== "NA" && wa.enabled ? "badge-success" : "badge-ghost"
+              }`}>
+                {wa === "NA" ? "No disponible" : wa?.enabled ? "Activo" : "Desactivado"}
               </span>
             </div>
-            <div className="text-sm space-y-1">
-              <div><span className="opacity-70">Emisor:</span> {wa?.from ?? "—"}</div>
-              <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
-              <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
-              <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
-            </div>
+
+            {wa !== "NA" ? (
+              <div className="text-sm space-y-1">
+                <div><span className="opacity-70">Emisor:</span> {wa?.from ?? "—"}</div>
+                <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
+                <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
+                <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
+              </div>
+            ) : (
+              <p className="text-sm opacity-70">Sin integración de estado en esta API.</p>
+            )}
+
             {adminOrAbove && (
               <div className="card-actions mt-3">
                 <Link to="/app/customers" className="btn btn-sm btn-primary">
@@ -83,13 +79,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Clientes – accesos */}
+        {/* Clientes */}
         <div className="card bg-base-100 shadow lg:col-span-2">
           <div className="card-body">
             <h3 className="card-title">Clientes</h3>
-            <p className="text-sm opacity-70">
-              Abre el listado, crea clientes o escanea su QR para registrar visitas.
-            </p>
+            <p className="text-sm opacity-70">Abre el listado, crea clientes o escanea su QR para registrar visitas.</p>
             <div className="join">
               <Link to="/app/customers" className="btn btn-primary join-item">Abrir listado</Link>
               <Link to="/app/customers/new" className="btn btn-outline join-item">Crear cliente</Link>
