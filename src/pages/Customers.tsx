@@ -1,175 +1,205 @@
+// src/pages/Customers.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listCustomers, deleteCustomer } from "@/shared/api";
-import { useSession, isAdmin } from "@/shared/auth";
 import AppLayout from "@/layout/AppLayout";
+import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
+import {
+  listCustomers,
+  publicCustomerQrUrl,
+  type CustomerLite,
+} from "@/shared/api";
 
-function maskPhone(p?: string) {
-  return p ? p.replace(/.(?=.{4})/g, "•") : "—";
+// Fallback de tipo por si CustomerLite no importa todo
+type Row = CustomerLite & {
+  email?: string | null;
+  visitsCount?: number;
+  createdAt?: string;
+};
+
+function maskPhone(p?: string | null) {
+  if (!p) return "—";
+  const digits = p.replace(/\D/g, "");
+  if (digits.length <= 4) return "•••";
+  return `${digits.slice(0, 2)}•••${digits.slice(-2)}`;
 }
-function maskEmail(e?: string) {
+
+function maskEmail(e?: string | null) {
   if (!e) return "—";
-  const [u = "", d = ""] = e.split("@");
-  const uu = u.slice(0, 2) + "•".repeat(Math.max(0, u.length - 2));
-  return `${uu}@${d}`;
+  const [user, dom] = e.split("@");
+  if (!dom) return "—";
+  const u = user.length <= 2 ? "••" : user[0] + "••" + user.slice(-1);
+  return `${u}@${dom}`;
 }
 
-export default function CustomersPage() {
-  const { role } = useSession();
-  const admin = isAdmin(role);
+export default function Customers() {
+  const s = useSession();
+  const role = s.role;
 
-  const [rows, setRows] = useState<any[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const canSeeSensitive = useMemo(
+    () => isAdmin(role) || isOwner(role) || isSuperAdmin(role),
+    [role]
+  );
+
   const [q, setQ] = useState("");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // QR modal
+  const [qrId, setQrId] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setError("");
-    listCustomers()
-      .then((data) => alive && setRows(Array.isArray(data) ? data : []))
-      .catch((e) => {
-        if (!alive) return;
-        const msg = e?.response?.data?.message || e?.message || "No se pudo cargar el listado.";
-        setError(msg);
-      })
-      .finally(() => alive && setLoading(false));
+    let live = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr(null);
+        const data = await listCustomers({ q: q.trim() || undefined, limit: 50 });
+        if (!live) return;
+        setRows(data || []);
+      } catch (e: any) {
+        if (!live) return;
+        setErr(e?.message || "No se pudo cargar el listado.");
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
     return () => {
-      alive = false;
+      live = false;
     };
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!q.trim()) return rows;
-    const term = q.toLowerCase();
-    return rows.filter((c) => {
-      const name = (c.name || "").toLowerCase();
-      const phone = (c.phone || "").toLowerCase();
-      const email = (c.email || "").toLowerCase();
-      return name.includes(term) || phone.includes(term) || email.includes(term);
-    });
-  }, [rows, q]);
-
-  async function onDeleteRow(c: any) {
-    if (!admin) return; // seguridad UI
-    const ok = confirm(`¿Eliminar definitivamente ${c.name || "este cliente"}?`);
-    if (!ok) return;
-    try {
-      await deleteCustomer(c.id);
-      setRows((prev) => prev.filter((x) => x.id !== c.id));
-    } catch (e: any) {
-      const status = e?.response?.status;
-      const apiMsg = e?.response?.data?.message;
-      const msg =
-        status === 401 || status === 403
-          ? apiMsg || "No tienes permiso para eliminar (intenta con un usuario ADMIN u OWNER)."
-          : apiMsg || e?.message || "No se pudo eliminar.";
-      setError(msg);
-    }
-  }
+  }, [q]);
 
   return (
-    <AppLayout title="Clientes" subtitle="Gestión de clientes registrados">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-        <div className="join w-full md:w-auto">
-          <label className="join-item input input-bordered flex items-center gap-2 w-full md:w-80">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="size-4 opacity-60"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-            >
-              <path strokeWidth="2" d="m21 21-3.5-3.5M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />
-            </svg>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              type="text"
-              placeholder="Buscar por nombre, teléfono o email…"
-              className="grow"
-              disabled={loading}
-            />
-          </label>
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <Link to="/app/customers/new" className={`btn btn-primary ${loading ? "btn-disabled" : ""}`}>
-            Nuevo cliente
+    <AppLayout
+      title="Clientes"
+      subtitle="Busca, abre el detalle y muestra el QR del cliente."
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Link to="/app/customers/new" className="btn btn-primary btn-sm">
+            + Crear cliente
           </Link>
         </div>
+      }
+    >
+      {/* search */}
+      <div className="mb-4 flex items-center gap-2">
+        <input
+          className="input input-bordered w-full max-w-md"
+          placeholder="Buscar por nombre, teléfono o email…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button className="btn btn-ghost" onClick={() => setQ("")}>
+          Limpiar
+        </button>
       </div>
 
-      {error && (
-        <div className="alert alert-warning mb-4" aria-live="polite">
-          <span>{error}</span>
+      {err && (
+        <div className="alert alert-warning mb-4">
+          <span>{err}</span>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-box border border-base-300">
-        <table className="table table-zebra table-compact w-full">
-          <thead className="bg-base-200 sticky top-0 z-10">
+      <div className="overflow-x-auto bg-base-100 rounded-2xl border border-base-200">
+        <table className="table table-zebra">
+          <thead>
             <tr>
-              <th className="w-[35%]">Nombre</th>
-              <th className="w-[20%]">Teléfono</th>
-              <th className="hidden sm:table-cell w-[30%]">Email</th>
-              <th className="w-[15%] text-right">Acciones</th>
+              <th>Cliente</th>
+              <th className="hidden sm:table-cell">Teléfono</th>
+              <th className="hidden md:table-cell">Email</th>
+              <th className="hidden lg:table-cell">Visitas</th>
+              <th className="hidden lg:table-cell">Alta</th>
+              <th className="text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {loading ? (
+              [...Array(6)].map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={6}>
+                    <div className="skeleton h-6 w-full" />
+                  </td>
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={4}>
-                  <div className="p-4 flex items-center gap-2">
-                    <span className="loading loading-spinner" />
-                    Cargando…
-                  </div>
+                <td colSpan={6} className="text-center py-6 opacity-70">
+                  Sin resultados.
                 </td>
               </tr>
-            )}
-
-            {!loading &&
-              filtered.map((c) => (
-                <tr key={c.id} className="hover">
-                  <td className="font-medium">{c.name}</td>
-                  <td>{admin ? c.phone || "—" : maskPhone(c.phone)}</td>
-                  <td className="hidden sm:table-cell">{admin ? c.email || "—" : maskEmail(c.email)}</td>
+            ) : (
+              rows.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <div className="font-medium">{c.name || "Cliente"}</div>
+                    <div className="text-xs opacity-60">{c.id}</div>
+                  </td>
+                  <td className="hidden sm:table-cell">
+                    {canSeeSensitive ? c.phone || "—" : maskPhone(c.phone)}
+                  </td>
+                  <td className="hidden md:table-cell">
+                    {canSeeSensitive ? c.email || "—" : maskEmail(c.email)}
+                  </td>
+                  <td className="hidden lg:table-cell">{c.visitsCount ?? "—"}</td>
+                  <td className="hidden lg:table-cell">
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}
+                  </td>
                   <td className="text-right">
                     <div className="join">
-                      <Link
-                        to={`/app/customers/${c.id}`}
-                        className={`btn btn-ghost btn-xs join-item ${loading ? "btn-disabled" : ""}`}
-                      >
-                        Ver
+                      <Link to={`/app/customers/${c.id}`} className="btn btn-ghost btn-xs join-item">
+                        Detalle
                       </Link>
-                      {admin && (
-                        <button
-                          onClick={() => onDeleteRow(c)}
-                          className={`btn btn-ghost btn-xs join-item text-error ${loading ? "btn-disabled" : ""}`}
-                          disabled={loading}
-                        >
-                          Eliminar
-                        </button>
-                      )}
+                      <button
+                        onClick={() => setQrId(c.id)}
+                        className="btn btn-outline btn-xs join-item"
+                        title="Ver QR"
+                      >
+                        QR
+                      </button>
                     </div>
                   </td>
                 </tr>
-              ))}
-
-            {!loading && filtered.length === 0 && !error && (
-              <tr>
-                <td colSpan={4}>
-                  <div className="p-6 text-sm text-base-content/60">
-                    {q ? "No hay resultados para tu búsqueda." : "Sin clientes."}
-                  </div>
-                </td>
-              </tr>
+              ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal QR */}
+      <input type="checkbox" className="modal-toggle" checked={!!qrId} readOnly />
+      {qrId && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-2">QR del cliente</h3>
+            <div className="flex justify-center mb-3">
+              {/* png público servido por la API */}
+              <img
+                src={publicCustomerQrUrl(qrId)}
+                alt="QR del cliente"
+                className="w-48 h-48 object-contain"
+                onError={(e) => ((e.currentTarget.style.opacity = "0.4"))}
+              />
+            </div>
+            <div className="text-xs break-all bg-base-200 rounded p-2">
+              {publicCustomerQrUrl(qrId)}
+            </div>
+            <div className="modal-action">
+              <button className="btn" onClick={() => setQrId(null)}>
+                Cerrar
+              </button>
+              <a
+                className="btn btn-primary"
+                href={publicCustomerQrUrl(qrId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Abrir en nueva pestaña
+              </a>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setQrId(null)} />
+        </div>
+      )}
     </AppLayout>
   );
 }
