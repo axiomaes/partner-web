@@ -1,5 +1,5 @@
 // src/pages/Customers.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
@@ -9,20 +9,20 @@ import {
   type CustomerLite,
 } from "@/shared/api";
 
-// Fallback de tipo por si CustomerLite no importa todo
+/** ---- Tipos ---- */
 type Row = CustomerLite & {
   email?: string | null;
   visitsCount?: number;
   createdAt?: string;
 };
 
+/** ---- Helpers de enmascarado (para BARBER) ---- */
 function maskPhone(p?: string | null) {
   if (!p) return "—";
   const digits = p.replace(/\D/g, "");
   if (digits.length <= 4) return "•••";
   return `${digits.slice(0, 2)}•••${digits.slice(-2)}`;
 }
-
 function maskEmail(e?: string | null) {
   if (!e) return "—";
   const [user, dom] = e.split("@");
@@ -40,17 +40,21 @@ export default function Customers() {
     [role]
   );
 
+  /** ---- Estado ---- */
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  // QR modal
   const [qrId, setQrId] = useState<string | null>(null);
 
+  /** ---- Búsqueda con debounce ---- */
+  const debTimer = useRef<number | null>(null);
   useEffect(() => {
     let live = true;
-    (async () => {
+
+    // pequeño debounce para no spamear la API
+    if (debTimer.current) window.clearTimeout(debTimer.current);
+    debTimer.current = window.setTimeout(async () => {
       try {
         setLoading(true);
         setErr(null);
@@ -63,12 +67,15 @@ export default function Customers() {
       } finally {
         if (live) setLoading(false);
       }
-    })();
+    }, 300);
+
     return () => {
       live = false;
+      if (debTimer.current) window.clearTimeout(debTimer.current);
     };
   }, [q]);
 
+  /** ---- Render ---- */
   return (
     <AppLayout
       title="Clientes"
@@ -81,15 +88,20 @@ export default function Customers() {
         </div>
       }
     >
-      {/* search */}
+      {/* Buscador */}
       <div className="mb-4 flex items-center gap-2">
         <input
           className="input input-bordered w-full max-w-md"
           placeholder="Buscar por nombre, teléfono o email…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          aria-label="Buscar clientes"
         />
-        <button className="btn btn-ghost" onClick={() => setQ("")}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setQ("")}
+          title="Limpiar búsqueda"
+        >
           Limpiar
         </button>
       </div>
@@ -146,7 +158,11 @@ export default function Customers() {
                   </td>
                   <td className="text-right">
                     <div className="join">
-                      <Link to={`/app/customers/${c.id}`} className="btn btn-ghost btn-xs join-item">
+                      <Link
+                        to={`/app/customers/${c.id}`}
+                        className="btn btn-ghost btn-xs join-item"
+                        title="Ver detalle"
+                      >
                         Detalle
                       </Link>
                       <button
@@ -168,19 +184,20 @@ export default function Customers() {
       {/* Modal QR */}
       <input type="checkbox" className="modal-toggle" checked={!!qrId} readOnly />
       {qrId && (
-        <div className="modal modal-open">
+        <div className="modal modal-open" onKeyDown={(e) => e.key === "Escape" && setQrId(null)}>
           <div className="modal-box">
             <h3 className="font-bold text-lg mb-2">QR del cliente</h3>
             <div className="flex justify-center mb-3">
-              {/* png público servido por la API */}
               <img
                 src={publicCustomerQrUrl(qrId)}
                 alt="QR del cliente"
                 className="w-48 h-48 object-contain"
-                onError={(e) => ((e.currentTarget.style.opacity = "0.4"))}
+                onError={(e) => {
+                  e.currentTarget.style.opacity = "0.4";
+                }}
               />
             </div>
-            <div className="text-xs break-all bg-base-200 rounded p-2">
+            <div className="text-xs break-all bg-base-200 rounded p-2 mb-3">
               {publicCustomerQrUrl(qrId)}
             </div>
             <div className="modal-action">
@@ -193,7 +210,7 @@ export default function Customers() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Abrir en nueva pestaña
+                Abrir PNG
               </a>
             </div>
           </div>
