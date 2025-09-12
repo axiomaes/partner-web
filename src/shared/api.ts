@@ -1,4 +1,3 @@
-// partner-web/src/shared/api.ts
 import axios, { AxiosHeaders, AxiosInstance } from "axios";
 import { saveSession } from "./auth";
 
@@ -97,7 +96,6 @@ export const api: AxiosInstance = axios.create({
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
 
-// Adjunta siempre Authorization desde localStorage 'axioma.session'
 api.interceptors.request.use((config) => {
   const url = String(config.url || "");
   let path = url;
@@ -111,11 +109,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de respuesta (soft-logout)
-// Solo fuerza logout en endpoints críticos de sesión.
-// Para el resto, deja que el componente maneje el 401/403 sin borrar la sesión.
-const FORCE_LOGOUT_PREFIXES = ["/auth/me", "/auth/refresh", "/users/me", "/session", "/auth/logout"];
-
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -124,16 +117,15 @@ api.interceptors.response.use(
     const cfgUrl = String(err?.config?.url || "");
     let path = cfgUrl;
     try { path = new URL(cfgUrl, baseURL).pathname; } catch {}
+    const isCpanel = path.startsWith("/cp/");
+    const isAuthLogin = path === "/auth/login";
 
-    const isCritical = FORCE_LOGOUT_PREFIXES.some((p) => path.startsWith(p));
-
-    if ((status === 401 || status === 403) && isCritical && method !== "OPTIONS") {
+    if ((status === 401 || status === 403) && !isCpanel && !isAuthLogin && method !== "OPTIONS") {
       clearPanelSession();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.replace("/login");
       }
     }
-    // Para cualquier otro 401/403, no tocamos la sesión.
     return Promise.reject(err);
   }
 );
@@ -238,20 +230,10 @@ export const createStaff = (email: string, password: string, role: "ADMIN" | "BA
   api.post("/users", { email, password, role }).then((r) => r.data);
 
 /** Clientes */
-export const listCustomers = (businessId?: string) =>
+export const listCustomers = () =>
   api
-    .get(businessId ? `/customers?businessId=${encodeURIComponent(businessId)}` : "/customers", {
-      validateStatus: () => true, // <- no disparemos logout automático
-    })
-    .then((r) => {
-      if (r.status >= 200 && r.status < 300) {
-        return Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? [];
-      }
-      // devolvemos un error “suave” con el status para que la UI lo muestre
-      const err: any = new Error(r.data?.message || `Error HTTP ${r.status}`);
-      err.status = r.status;
-      throw err;
-    });
+    .get("/customers")
+    .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
 
 export const createCustomer = (name: string, phone: string) =>
   api.post("/customers", { name, phone }).then((r) => r.data as CreatedCustomer);
@@ -302,23 +284,79 @@ export function resendCustomerQr(customerId: string) {
   return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
 
-/** ============= API Portal (OTP) ============= */
+/** ========= WhatsApp: descubrimiento de endpoint + status ========= */
+export type WaStatus = {
+  enabled?: boolean;
+  from?: string | null;
+  dailyLimit?: number | null;
+  ratePerMinute?: number | null;
+  monthlyCap?: number | null;
+};
+
+const WA_STATUS_CANDIDATES = [
+  "/wa/status",
+  "/whatsapp/status",
+  "/integrations/wa/status",
+  "/cp/wa/status",
+];
+const WA_STATUS_CACHE_KEY = "axioma.wa.status_path";
+
+async function resolvePath(candidates: string[], cacheKey: string): Promise<string | null> {
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached === "") return null;
+    if (cached) return cached;
+  } catch {}
+  for (const p of candidates) {
+    try {
+      const r = await api.get(p, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) {
+        try { localStorage.setItem(cacheKey, p); } catch {}
+        return p;
+      }
+    } catch {}
+  }
+  try { localStorage.setItem(cacheKey, ""); } catch {}
+  return null;
+}
+
+export async function getWaStatus(): Promise<WaStatus | null> {
+  const path = await resolvePath(WA_STATUS_CANDIDATES, WA_STATUS_CACHE_KEY);
+  if (!path) return null;
+  const r = await api.get(path, { validateStatus: () => true });
+  return r.status >= 200 && r.status < 300 ? (r.data as WaStatus) : null;
+}
+
+/** ============= API Portal (OTP) con fallback de rutas ============= */
+const OTP_REQUEST_CANDIDATES = ["/portal/otp/request", "/portal/otp/send", "/otp/request"];
+const OTP_VERIFY_CANDIDATES  = ["/portal/otp/verify",  "/otp/verify"];
+
+async function postFirstOk(pathList: string[], body: any) {
+  let last: any = null;
+  for (const p of pathList) {
+    try {
+      const r = await axios.post(baseURL + p, body, {
+        headers: { "Content-Type": "application/json" },
+        validateStatus: () => true,
+      });
+      if (r.status >= 200 && r.status < 300) return r;
+      last = r;
+    } catch (e) {
+      last = e;
+    }
+  }
+  const msg = last?.data?.message || last?.message || "No disponible";
+  throw new Error(msg);
+}
+
 export async function requestCustomerOtp(body: { phone?: string; email?: string }) {
-  const r = await axios.post(baseURL + "/portal/otp/request", body, {
-    headers: { "Content-Type": "application/json" },
-    validateStatus: () => true,
-  });
-  if (r.status >= 200 && r.status < 300) return true;
-  throw new Error(r.data?.message || "No se pudo enviar el código.");
+  await postFirstOk(OTP_REQUEST_CANDIDATES, body);
+  return true;
 }
 
 export async function verifyCustomerOtp(body: { phone?: string; email?: string; code: string }) {
-  const r = await axios.post(baseURL + "/portal/otp/verify", body, {
-    headers: { "Content-Type": "application/json" },
-    validateStatus: () => true,
-  });
-  if (r.status >= 200 && r.status < 300) return r.data;
-  throw new Error(r.data?.message || "Código inválido o expirado.");
+  const r = await postFirstOk(OTP_VERIFY_CANDIDATES, body);
+  return r.data;
 }
 
 export async function getMyVisits() {
