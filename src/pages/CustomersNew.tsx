@@ -1,4 +1,4 @@
-// partner-web/src/pages/CustomersNew.tsx
+// src/pages/CustomersNew.tsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, createCustomer } from "@/shared/api";
@@ -11,15 +11,15 @@ export default function CustomersNew() {
   const navigate = useNavigate();
   const { role } = useSession();
   const admin = isAdmin(role);
-  const isStaff = !admin; // cualquier rol no-admin
+  const isStaff = !admin;
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+34");
+  const [birthday, setBirthday] = useState(""); // YYYY-MM-DD
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [created, setCreated] = useState<Created | null>(null);
 
-  // Usa la ruta pública del QR
   const qrUrl = created
     ? `${api.defaults.baseURL}/public/customers/${encodeURIComponent(created.id)}/qr.png`
     : "";
@@ -31,13 +31,9 @@ export default function CustomersNew() {
     setMsg("");
     setCreated(null);
     try {
-      // ⬇️ antes: createCustomer(name, phone, businessId)
-      const c = await createCustomer(name.trim(), phone.trim());
+      const c = await createCustomer(name.trim(), phone.trim(), birthday || undefined);
       setCreated(c);
-
-      // Si es staff, limpiamos el teléfono del estado para no dejarlo visible en la UI
       if (isStaff) setPhone("+34");
-
       setMsg(
         c.existed
           ? `⚠️ Este cliente ya existía. Mostramos su QR para comenzar a usarlo.`
@@ -65,9 +61,7 @@ export default function CustomersNew() {
             <h2 className="card-title">Datos del cliente</h2>
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Nombre</span>
-                </label>
+                <label className="label"><span className="label-text">Nombre</span></label>
                 <input
                   className="input input-bordered"
                   placeholder="Nombre y apellido"
@@ -78,9 +72,7 @@ export default function CustomersNew() {
               </div>
 
               <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Teléfono</span>
-                </label>
+                <label className="label"><span className="label-text">Teléfono</span></label>
                 <input
                   type={isStaff ? "password" : "tel"}
                   inputMode="tel"
@@ -91,28 +83,28 @@ export default function CustomersNew() {
                   required
                 />
                 <label className="label">
-                  <span className="label-text-alt">
-                    Formato recomendado: <code className="font-mono">+34</code> seguido del número.
-                    {isStaff && " (oculto para staff)"}
-                  </span>
+                  <span className="label-text-alt">Formato recomendado: +34 seguido del número.{isStaff && " (oculto para staff)"}</span>
+                </label>
+              </div>
+
+              <div className="form-control">
+                <label className="label"><span className="label-text">Cumpleaños</span></label>
+                <input
+                  type="date"
+                  className="input input-bordered"
+                  value={birthday}
+                  onChange={(e) => setBirthday(e.target.value)}
+                />
+                <label className="label">
+                  <span className="label-text-alt">Opcional. Formato YYYY-MM-DD.</span>
                 </label>
               </div>
 
               <div className="flex items-center gap-2">
                 <button className="btn btn-primary" disabled={submitting} type="submit">
-                  {submitting ? (
-                    <>
-                      <span className="loading loading-spinner" />
-                      Creando…
-                    </>
-                  ) : (
-                    "Crear cliente"
-                  )}
+                  {submitting ? (<><span className="loading loading-spinner" />Creando…</>) : "Crear cliente"}
                 </button>
-
-                <Link to="/app/customers" className="btn btn-ghost">
-                  Cancelar
-                </Link>
+                <Link to="/app/customers/list" className="btn btn-ghost">Cancelar</Link>
               </div>
 
               {msg && (
@@ -128,43 +120,3 @@ export default function CustomersNew() {
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body items-center text-center">
             <h2 className="card-title">QR del cliente</h2>
-
-            {!created ? (
-              <div className="text-sm opacity-70">Crea el cliente para generar su QR.</div>
-            ) : (
-              <>
-                <div className="mb-2">
-                  <div className="text-sm opacity-70">Cliente</div>
-                  <div className="text-lg font-medium">{created.name}</div>
-                </div>
-
-                <div className="p-4 rounded-box border border-base-300 bg-base-200">
-                  <img src={qrUrl} alt="QR del cliente" className="w-56 h-56 object-contain" />
-                </div>
-
-                <div className="join mt-4">
-                  <a href={qrUrl} download={`qr-${created.id}.png`} className="btn btn-outline join-item">
-                    Descargar PNG
-                  </a>
-                  <button onClick={onPrint} className="btn btn-outline join-item">
-                    Imprimir
-                  </button>
-                  <button
-                    className="btn btn-primary join-item"
-                    onClick={() => navigate(`/app/customers/${created.id}`)}
-                  >
-                    Ir al detalle
-                  </button>
-                </div>
-
-                <div className="mt-3 text-xs opacity-70">
-                  El cliente también podrá ver este QR desde su Portal.
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </AppLayout>
-  );
-}
