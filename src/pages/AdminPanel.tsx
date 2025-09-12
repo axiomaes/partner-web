@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { api, addVisitByPhone, resendCustomerQr } from "@/shared/api";
-import { useSession, isAdmin } from "@/shared/auth";
+import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
 
 type Customer = {
   id: string;
@@ -23,12 +23,16 @@ type WaStatus = {
 export default function AdminPanel() {
   const nav = useNavigate();
   const { role } = useSession();
-  const admin = isAdmin(role);
 
-  // Guard “blando”: si no es admin, lo mando a inicio
+  // ADMIN | OWNER | SUPERADMIN (según helpers actuales)
+  const adminOrAbove = isAdmin(role);
+  // Habilitar reenvío de WhatsApp explícitamente para SUPERADMIN/OWNER/ADMIN
+  const canSendWa = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
+
+  // Guard “blando”: si no es admin/owner/superadmin, lo mando a check-in (staff)
   useEffect(() => {
-    if (!admin) nav("/app", { replace: true });
-  }, [admin, nav]);
+    if (!adminOrAbove) nav("/staff/checkin", { replace: true });
+  }, [adminOrAbove, nav]);
 
   // ----- Estado: quick points -----
   const [qpPhone, setQpPhone] = useState("+34");
@@ -49,7 +53,7 @@ export default function AdminPanel() {
     }
   };
 
-  // ----- Estado: WhatsApp (solo info; sin nota de variables) -----
+  // ----- Estado: WhatsApp (solo info) -----
   const [wa, setWa] = useState<WaStatus | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -106,6 +110,7 @@ export default function AdminPanel() {
   const [resendMsg, setResendMsg] = useState<Record<string, string>>({});
 
   const onResend = async (id: string) => {
+    if (!canSendWa) return;
     setResendMsg((m) => ({ ...m, [id]: "Enviando…" }));
     try {
       const r = await resendCustomerQr(id);
@@ -142,15 +147,9 @@ export default function AdminPanel() {
                 "—"
               )}
             </div>
-            <div>
-              <span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}
-            </div>
-            <div>
-              <span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}
-            </div>
-            <div>
-              <span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}
-            </div>
+            <div><span className="opacity-70">Límite diario:</span> {wa?.dailyLimit ?? "—"}</div>
+            <div><span className="opacity-70">Tasa por minuto:</span> {wa?.ratePerMinute ?? "—"}</div>
+            <div><span className="opacity-70">Límite mensual:</span> {wa?.monthlyCap ?? "—"}</div>
           </div>
         </div>
       </div>
@@ -159,6 +158,13 @@ export default function AdminPanel() {
 
   return (
     <AppLayout title="La Cubierta Barbería — Panel del Administrador" subtitle="Herramientas de negocio">
+      {/* Navegación rápida */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Link to="/app/customers" className="btn btn-primary btn-sm">Listado de clientes</Link>
+        <Link to="/app/customers/new" className="btn btn-outline btn-sm">Crear cliente</Link>
+        <Link to="/staff/checkin" className="btn btn-outline btn-sm">Escanear QR</Link>
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-6">
         {/* QUICK POINTS */}
         <div className="card bg-base-100 shadow-sm">
@@ -205,7 +211,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* CREAR CLIENTE (tarjeta separada) */}
+        {/* CREAR CLIENTE */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title">Crear cliente</h2>
@@ -220,7 +226,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* WHATSAPP STATUS (sin texto de variables) */}
+        {/* WHATSApp STATUS */}
         <WaCard />
 
         {/* CLIENTES */}
@@ -229,7 +235,7 @@ export default function AdminPanel() {
             <div className="flex items-center justify-between gap-2">
               <h2 className="card-title">Clientes</h2>
               <Link to="/app/customers" className="btn btn-ghost btn-sm">
-                Ver listado clásico
+                Ver listado
               </Link>
             </div>
 
@@ -280,9 +286,9 @@ export default function AdminPanel() {
                               Detalle
                             </Link>
                             <button
-                              className="btn btn-info btn-sm w-28"
-                              onClick={() => onResend(c.id)}
-                              title="Reenviar QR por WhatsApp"
+                              className={`btn btn-info btn-sm w-28 ${!canSendWa ? "btn-disabled" : ""}`}
+                              onClick={() => canSendWa && onResend(c.id)}
+                              title={canSendWa ? "Reenviar QR por WhatsApp" : "No autorizado"}
                             >
                               Reenviar QR
                             </button>
@@ -307,7 +313,7 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* STAFF – placeholder (cuando tengas API de Users) */}
+        {/* STAFF – placeholder */}
         <div className="card bg-base-100 shadow-sm lg:col-span-2">
           <div className="card-body">
             <h2 className="card-title">Equipo (staff)</h2>
