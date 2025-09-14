@@ -172,6 +172,39 @@ export async function authLogin(email: string, password: string) {
   return { session, next };
 }
 
+/* ===========================================================
+   ===============  CPANEL: negocios (CP)  ====================
+   Exportamos CpBusiness y listCpBusinesses para compatibilidad
+   con src/lib/api.ts
+   ===========================================================*/
+export type CpBusiness = { id: string; name?: string; displayName?: string };
+
+const CP_BIZ_ENDPOINTS = [
+  "/cp/admin/businesses",
+  "/cp/businesses",
+  "/cp/admin/businesses/list",
+  "/admin/businesses",
+  "/businesses",
+];
+
+export async function listCpBusinesses(): Promise<CpBusiness[]> {
+  let lastErr: any = null;
+  for (const path of CP_BIZ_ENDPOINTS) {
+    try {
+      const r = await api.get(path, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) {
+        const items = (Array.isArray(r.data) ? r.data : r.data?.items ?? r.data?.data ?? []) as CpBusiness[];
+        if (items) return items;
+      }
+      if (r.status !== 404) lastErr = new Error(r.data?.message || `HTTP ${r.status} en ${path}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  throw new Error("No existe endpoint CP para listar negocios.");
+}
+
 /** ============= Tipos/Helpers panel ============= */
 export type UserLite = {
   id: string;
@@ -202,6 +235,7 @@ export async function listUsers(q?: string): Promise<UserLite[]> {
 }
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
+
 export async function updateUser(
   userId: string,
   patch: Partial<Pick<UserLite, "name" | "role" | "active">>
@@ -210,10 +244,31 @@ export async function updateUser(
   if (r.status >= 200 && r.status < 300) return r.data as UserLite;
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
-export async function resetUserPassword(userId: string): Promise<{ tempPassword: string }> {
-  const r = await api.post(`/users/${encodeURIComponent(userId)}/reset-password`, {}, { validateStatus: () => true });
-  if (r.status >= 200 && r.status < 300) return r.data as { tempPassword: string };
-  throw new Error(r.data?.message || `HTTP ${r.status}`);
+
+/** 👇 Para compatibilidad con StaffNew.tsx */
+export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
+  api.post("/users", { email, password, role }).then((r) => r.data);
+
+/** Cambiar mi contraseña (cuenta propia) con fallback de rutas */
+const PASSWORD_CHANGE_CANDIDATES: Array<{ method: "PATCH" | "POST"; path: string }> = [
+  { method: "PATCH", path: "/users/me/password" },
+  { method: "POST",  path: "/users/me/password" },
+  { method: "POST",  path: "/auth/change-password" },
+  { method: "POST",  path: "/me/password" },
+];
+export async function changeMyPassword(currentPassword: string, newPassword: string): Promise<true> {
+  for (const cand of PASSWORD_CHANGE_CANDIDATES) {
+    try {
+      const r = await api.request({
+        method: cand.method,
+        url: cand.path,
+        data: { currentPassword, newPassword },
+        validateStatus: () => true,
+      });
+      if (r.status >= 200 && r.status < 300) return true;
+    } catch {}
+  }
+  throw new Error("No se pudo cambiar la contraseña (endpoint no disponible).");
 }
 
 /** ====== Clientes ====== */
@@ -318,7 +373,7 @@ export function resendCustomerQr(customerId: string) {
   return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
 
-/** ========= WhatsApp / OTP (igual que antes) ========= */
+/** ========= WhatsApp / OTP ========= */
 export type WaStatus = {
   enabled?: boolean;
   from?: string | null;
