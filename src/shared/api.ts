@@ -172,37 +172,7 @@ export async function authLogin(email: string, password: string) {
   return { session, next };
 }
 
-/** ============= Descubrimiento de endpoint CP (negocios) ============= */
-export type CpBusiness = { id: string; name?: string; displayName?: string };
-
-const CP_BIZ_ENDPOINTS = [
-  "/cp/admin/businesses",
-  "/cp/businesses",
-  "/cp/admin/businesses/list",
-  "/admin/businesses",
-  "/businesses",
-];
-
-export async function listCpBusinesses(): Promise<CpBusiness[]> {
-  let lastErr: any = null;
-  for (const path of CP_BIZ_ENDPOINTS) {
-    try {
-      const r = await api.get(path, { validateStatus: () => true });
-      if (r.status >= 200 && r.status < 300) {
-        const items = (Array.isArray(r.data) ? r.data : r.data?.items ?? r.data?.data ?? []) as CpBusiness[];
-        if (items && items.length >= 0) return items;
-      }
-      if (r.status !== 404) lastErr = new Error(r.data?.message || `HTTP ${r.status} en ${path}`);
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  if (lastErr) throw lastErr;
-  throw new Error("No existe endpoint CP para listar negocios (probados: " + CP_BIZ_ENDPOINTS.join(", ") + ")");
-}
-
 /** ============= Tipos/Helpers panel ============= */
-// Ampliamos UserLite para edición en AdminUsers
 export type UserLite = {
   id: string;
   email?: string | null;
@@ -222,8 +192,6 @@ export type CustomerLite = {
 type CreatedCustomer = { id: string; name: string; existed?: boolean };
 
 /** ====== Usuarios ====== */
-
-// listUsers con búsqueda opcional (q). Devuelve rows/items/data o array directo.
 export async function listUsers(q?: string): Promise<UserLite[]> {
   const r = await api.get("/users", { params: q ? { q } : undefined, validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) {
@@ -232,14 +200,8 @@ export async function listUsers(q?: string): Promise<UserLite[]> {
   }
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
-
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
-
-// Alias legacy
-export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
-  api.post("/users", { email, password, role }).then((r) => r.data);
-
 export async function updateUser(
   userId: string,
   patch: Partial<Pick<UserLite, "name" | "role" | "active">>
@@ -248,22 +210,13 @@ export async function updateUser(
   if (r.status >= 200 && r.status < 300) return r.data as UserLite;
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
-
 export async function resetUserPassword(userId: string): Promise<{ tempPassword: string }> {
   const r = await api.post(`/users/${encodeURIComponent(userId)}/reset-password`, {}, { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return r.data as { tempPassword: string };
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
 
-export async function changeMyPassword(current: string, next: string): Promise<void> {
-  const r = await api.post("/auth/change-password", { current, next }, { validateStatus: () => true });
-  if (r.status >= 200 && r.status < 300) return;
-  throw new Error(r.data?.message || `HTTP ${r.status}`);
-}
-
 /** ====== Clientes ====== */
-
-// Acepta params opcionales (q, limit). Compat: si no pasas nada, lista todo.
 export async function listCustomers(params?: { q?: string; limit?: number }): Promise<CustomerLite[]> {
   const r = await api.get("/customers", {
     params: params?.q || params?.limit ? { q: params?.q, limit: params?.limit } : undefined,
@@ -280,7 +233,7 @@ export async function listCustomers(params?: { q?: string; limit?: number }): Pr
 export async function createCustomer(
   name: string,
   phone: string,
-  birthday?: string // YYYY-MM-DD opcional
+  birthday?: string
 ): Promise<{ id: string; name: string; existed?: boolean }> {
   const body: Record<string, any> = { name, phone };
   if (birthday && /^\d{4}-\d{2}-\d{2}$/.test(birthday)) body.birthday = birthday;
@@ -288,7 +241,6 @@ export async function createCustomer(
   return r.data;
 }
 
-/** Obtener un cliente por id (con fallback a listado local si hiciera falta) */
 export async function getCustomer(id: string): Promise<CustomerLite | null> {
   try {
     const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
@@ -301,7 +253,6 @@ export async function getCustomer(id: string): Promise<CustomerLite | null> {
   } catch { return null; }
 }
 
-/** Eliminar cliente (devuelve error claro en 403) */
 export async function deleteCustomer(id: string): Promise<void> {
   const r = await api.delete(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return;
@@ -314,18 +265,51 @@ export async function deleteCustomer(id: string): Promise<void> {
   throw err;
 }
 
-/** Visitas / recompensas / progreso / QR */
-export const addVisit = (customerId: string, notes?: string) =>
-  api.post(`/customers/${encodeURIComponent(customerId)}/visits`, { notes }).then((r) => r.data);
+/** ===== Visitas / QR ===== */
+export async function addVisit(customerId: string, notes?: string) {
+  const candidates = [
+    `/customers/${encodeURIComponent(customerId)}/visits`,
+    `/app/customers/${encodeURIComponent(customerId)}/visits`,
+    `/visits`, // body con customerId
+  ];
+  for (const p of candidates) {
+    try {
+      const body = p === "/visits" ? { customerId, notes } : { notes };
+      const r = await api.post(p, body, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) return r.data;
+    } catch {}
+  }
+  throw new Error("No se pudo registrar la visita.");
+}
 
-export const getCustomerRewards = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/rewards`).then((r) => r.data);
+export async function getCustomerVisits(customerId: string) {
+  const candidates = [
+    `/customers/${encodeURIComponent(customerId)}/visits`,
+    `/app/customers/${encodeURIComponent(customerId)}/visits`,
+    `/visits?customerId=${encodeURIComponent(customerId)}`,
+  ];
+  for (const p of candidates) {
+    try {
+      const r = await api.get(p, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) return r.data;
+    } catch {}
+  }
+  return [];
+}
 
-export const getCustomerVisits = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/visits`).then((r) => r.data);
-
-export const getCustomerProgress = (customerId: string) =>
-  api.get(`/customers/${encodeURIComponent(customerId)}/progress`).then((r) => r.data);
+export async function deleteCustomerVisit(customerId: string, visitId: string) {
+  const candidates = [
+    `/customers/${encodeURIComponent(customerId)}/visits/${encodeURIComponent(visitId)}`,
+    `/app/customers/${encodeURIComponent(customerId)}/visits/${encodeURIComponent(visitId)}`,
+  ];
+  for (const p of candidates) {
+    try {
+      const r = await api.delete(p, { validateStatus: () => true });
+      if (r.status >= 200 && r.status < 300) return true;
+    } catch {}
+  }
+  throw new Error("No se pudo eliminar la visita.");
+}
 
 export const publicCustomerQrUrl = (customerId: string) =>
   `${baseURL}/public/customers/${encodeURIComponent(customerId)}/qr.png`;
@@ -334,7 +318,7 @@ export function resendCustomerQr(customerId: string) {
   return api.post(`/customers/${encodeURIComponent(customerId)}/qr/send`).then((r) => r.data);
 }
 
-/** ========= WhatsApp: descubrimiento de endpoint + status ========= */
+/** ========= WhatsApp / OTP (igual que antes) ========= */
 export type WaStatus = {
   enabled?: boolean;
   from?: string | null;
@@ -343,12 +327,7 @@ export type WaStatus = {
   monthlyCap?: number | null;
 };
 
-const WA_STATUS_CANDIDATES = [
-  "/wa/status",
-  "/whatsapp/status",
-  "/integrations/wa/status",
-  "/cp/wa/status",
-];
+const WA_STATUS_CANDIDATES = ["/wa/status", "/whatsapp/status", "/integrations/wa/status", "/cp/wa/status"];
 const WA_STATUS_CACHE_KEY = "axioma.wa.status_path";
 
 async function resolvePath(candidates: string[], cacheKey: string): Promise<string | null> {
@@ -369,18 +348,15 @@ async function resolvePath(candidates: string[], cacheKey: string): Promise<stri
   try { localStorage.setItem(cacheKey, ""); } catch {}
   return null;
 }
-
-export async function getWaStatus(): Promise<WaStatus | null> {
+export async function getWaStatus() {
   const path = await resolvePath(WA_STATUS_CANDIDATES, WA_STATUS_CACHE_KEY);
   if (!path) return null;
   const r = await api.get(path, { validateStatus: () => true });
-  return r.status >= 200 && r.status < 300 ? (r.data as WaStatus) : null;
+  return r.status >= 200 && r.status < 300 ? r.data : null;
 }
 
-/** ============= API Portal (OTP) con fallback de rutas ============= */
 const OTP_REQUEST_CANDIDATES = ["/portal/otp/request", "/portal/otp/send", "/otp/request"];
 const OTP_VERIFY_CANDIDATES  = ["/portal/otp/verify",  "/otp/verify"];
-
 async function postFirstOk(pathList: string[], body: any) {
   let last: any = null;
   for (const p of pathList) {
@@ -391,24 +367,17 @@ async function postFirstOk(pathList: string[], body: any) {
       });
       if (r.status >= 200 && r.status < 300) return r;
       last = r;
-    } catch (e) {
-      last = e;
-    }
+    } catch (e) { last = e; }
   }
   const msg = last?.data?.message || last?.message || "No disponible";
   throw new Error(msg);
 }
-
 export async function requestCustomerOtp(body: { phone?: string; email?: string }) {
-  await postFirstOk(OTP_REQUEST_CANDIDATES, body);
-  return true;
+  await postFirstOk(OTP_REQUEST_CANDIDATES, body); return true;
 }
-
 export async function verifyCustomerOtp(body: { phone?: string; email?: string; code: string }) {
-  const r = await postFirstOk(OTP_VERIFY_CANDIDATES, body);
-  return r.data;
+  const r = await postFirstOk(OTP_VERIFY_CANDIDATES, body); return r.data;
 }
-
 export async function getMyVisits() {
   const r = await portalApi.get("/portal/me/visits", { validateStatus: () => true });
   return r.status >= 200 && r.status < 300 ? (r.data as any[]) : [];
@@ -430,10 +399,9 @@ export function addVisitFromQrPayload(payload: string) {
   return addVisit(parsed.customerId, notes);
 }
 
-/** ============= Búsqueda/Check-in staff ============= */
+/** Lookup por teléfono/email */
 type LookupInput = { phone?: string; email?: string };
-
-export async function lookupCustomer(input: LookupInput): Promise<CustomerLite | null> {
+export async function lookupCustomer(input: LookupInput) {
   const body: LookupInput = {};
   if (input.phone) body.phone = input.phone.trim();
   if (input.email) body.email = input.email.trim();
