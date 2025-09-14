@@ -21,6 +21,9 @@ import CustomersNew from "./pages/CustomersNew";     // ⬅️ ALTA
 import CustomerDetail from "./pages/CustomerDetail";
 import Logout from "./pages/Logout";
 
+/* Cuenta (cambio de contraseña propio) */
+import AccountSettings from "./pages/AccountSettings";
+
 /* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
 
@@ -98,6 +101,16 @@ export default function AppRouter() {
           element={
             <RouteGuard>
               <AdminUsers />
+            </RouteGuard>
+          }
+        />
+
+        {/* Mi cuenta */}
+        <Route
+          path="/app/account"
+          element={
+            <RouteGuard>
+              <AccountSettings />
             </RouteGuard>
           }
         />
