@@ -233,6 +233,7 @@ export async function listUsers(q?: string): Promise<UserLite[]> {
   }
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
+
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
 
@@ -243,6 +244,36 @@ export async function updateUser(
   const r = await api.patch(`/users/${encodeURIComponent(userId)}`, patch, { validateStatus: () => true });
   if (r.status >= 200 && r.status < 300) return r.data as UserLite;
   throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
+
+/** Resetear contraseña de un usuario (contraseña temporal) */
+export async function resetUserPassword(userId: string): Promise<{ tempPassword?: string }> {
+  const id = encodeURIComponent(userId);
+  const candidates: Array<{ url: string; method: "POST" | "PATCH"; body?: any }> = [
+    { url: `/users/${id}/reset-password`, method: "POST" },
+    { url: `/admin/users/${id}/reset-password`, method: "POST" },
+    { url: `/cp/users/${id}/reset-password`, method: "POST" },
+    { url: `/users/reset-password`, method: "POST", body: { userId } }, // fallback con body
+  ];
+  let last: any = null;
+  for (const c of candidates) {
+    try {
+      const r = await api.request({
+        url: c.url,
+        method: c.method,
+        data: c.body ?? {},
+        validateStatus: () => true,
+      });
+      if (r.status >= 200 && r.status < 300) {
+        return (r.data ?? {}) as { tempPassword?: string };
+      }
+      last = r;
+    } catch (e) {
+      last = e;
+    }
+  }
+  const msg = last?.data?.message || last?.message || "No se pudo resetear la contraseña.";
+  throw new Error(msg);
 }
 
 /** 👇 Para compatibilidad con StaffNew.tsx */
