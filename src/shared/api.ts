@@ -202,7 +202,14 @@ export async function listCpBusinesses(): Promise<CpBusiness[]> {
 }
 
 /** ============= Tipos/Helpers panel ============= */
-export type UserLite = { id: string; email: string; role: UserRole };
+// Ampliamos UserLite para edición en AdminUsers
+export type UserLite = {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  role?: UserRole;
+  active?: boolean;
+};
 
 export type CustomerLite = {
   id: string;
@@ -214,13 +221,17 @@ export type CustomerLite = {
 
 type CreatedCustomer = { id: string; name: string; existed?: boolean };
 
-/** Usuarios */
-export const listUsers = () =>
-  api.get("/users").then((r) =>
-    Array.isArray(r.data)
-      ? (r.data as UserLite[])
-      : ((r.data?.items ?? r.data?.data ?? []) as UserLite[])
-  );
+/** ====== Usuarios ====== */
+
+// listUsers con búsqueda opcional (q). Devuelve rows/items/data o array directo.
+export async function listUsers(q?: string): Promise<UserLite[]> {
+  const r = await api.get("/users", { params: q ? { q } : undefined, validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) {
+    const data = r.data;
+    return (Array.isArray(data) ? data : data?.rows ?? data?.items ?? data?.data ?? []) as UserLite[];
+  }
+  throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
 
 export const createUser = (email: string, password: string, role: UserRole) =>
   api.post("/users", { email, password, role }).then((r) => r.data as UserLite);
@@ -229,11 +240,42 @@ export const createUser = (email: string, password: string, role: UserRole) =>
 export const createStaff = (email: string, password: string, role: "ADMIN" | "BARBER") =>
   api.post("/users", { email, password, role }).then((r) => r.data);
 
-/** Clientes */
-export const listCustomers = () =>
-  api
-    .get("/customers")
-    .then((r) => (Array.isArray(r.data) ? r.data : r.data.items ?? r.data.data ?? []));
+export async function updateUser(
+  userId: string,
+  patch: Partial<Pick<UserLite, "name" | "role" | "active">>
+): Promise<UserLite> {
+  const r = await api.patch(`/users/${encodeURIComponent(userId)}`, patch, { validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) return r.data as UserLite;
+  throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
+
+export async function resetUserPassword(userId: string): Promise<{ tempPassword: string }> {
+  const r = await api.post(`/users/${encodeURIComponent(userId)}/reset-password`, {}, { validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) return r.data as { tempPassword: string };
+  throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
+
+export async function changeMyPassword(current: string, next: string): Promise<void> {
+  const r = await api.post("/auth/change-password", { current, next }, { validateStatus: () => true });
+  if (r.status >= 200 && r.status < 300) return;
+  throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
+
+/** ====== Clientes ====== */
+
+// Acepta params opcionales (q, limit). Compat: si no pasas nada, lista todo.
+export async function listCustomers(params?: { q?: string; limit?: number }): Promise<CustomerLite[]> {
+  const r = await api.get("/customers", {
+    params: params?.q || params?.limit ? { q: params?.q, limit: params?.limit } : undefined,
+    validateStatus: () => true,
+  });
+  if (r.status >= 200 && r.status < 300) {
+    const d = r.data;
+    const rows = Array.isArray(d) ? d : d.items ?? d.data ?? d.rows ?? [];
+    return rows as CustomerLite[];
+  }
+  throw new Error(r.data?.message || `HTTP ${r.status}`);
+}
 
 export async function createCustomer(
   name: string,
@@ -241,14 +283,12 @@ export async function createCustomer(
   birthday?: string // YYYY-MM-DD opcional
 ): Promise<{ id: string; name: string; existed?: boolean }> {
   const body: Record<string, any> = { name, phone };
-  // Enviamos birthday si viene; el backend (Prisma DateTime) lo parseará.
-  // Si tu API exige ISO, usa: new Date(birthday + "T00:00:00").toISOString()
   if (birthday && /^\d{4}-\d{2}-\d{2}$/.test(birthday)) body.birthday = birthday;
-
   const r = await api.post("/customers", body);
   return r.data;
 }
-/** Obtener un cliente por id */
+
+/** Obtener un cliente por id (con fallback a listado local si hiciera falta) */
 export async function getCustomer(id: string): Promise<CustomerLite | null> {
   try {
     const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
