@@ -246,34 +246,73 @@ export async function updateUser(
   throw new Error(r.data?.message || `HTTP ${r.status}`);
 }
 
-/** Resetear contraseña de un usuario (contraseña temporal) */
-export async function resetUserPassword(userId: string): Promise<{ tempPassword?: string }> {
-  const id = encodeURIComponent(userId);
-  const candidates: Array<{ url: string; method: "POST" | "PATCH"; body?: any }> = [
-    { url: `/users/${id}/reset-password`, method: "POST" },
-    { url: `/admin/users/${id}/reset-password`, method: "POST" },
-    { url: `/cp/users/${id}/reset-password`, method: "POST" },
-    { url: `/users/reset-password`, method: "POST", body: { userId } }, // fallback con body
+// === RESET PASSWORD (otro usuario) con “fallback” de rutas ===
+export async function resetUserPassword(userId: string): Promise<{ tempPassword: string }> {
+  type Cand = {
+    method: "POST" | "PATCH";
+    url: (id: string) => string;
+    body?: (id: string) => any;
+    // si el backend envía un 2xx sin devolver password, asumimos que la envían por email
+    assumeOkWithoutBody?: boolean;
+  };
+
+  const CANDIDATES: Cand[] = [
+    // 1) La más común: por id
+    { method: "POST", url: (id) => `/users/${encodeURIComponent(id)}/reset-password` },
+
+    // 2) Variantes admin/CP
+    { method: "POST", url: (id) => `/admin/users/${encodeURIComponent(id)}/reset-password` },
+    { method: "POST", url: (id) => `/cp/users/${encodeURIComponent(id)}/reset-password` },
+
+    // 3) PATCH directo de contraseña (el backend genera una temp o la fija y la devuelve)
+    { method: "PATCH", url: (id) => `/users/${encodeURIComponent(id)}/password`, body: () => ({ newPassword: "__GENERATE__" }) },
+
+    // 4) Ruta sin id que recibe { userId }
+    { method: "POST", url: () => `/users/reset-password`, body: (id) => ({ userId: id }) },
   ];
-  let last: any = null;
-  for (const c of candidates) {
+
+  let lastMsg = "";
+  for (const c of CANDIDATES) {
     try {
       const r = await api.request({
-        url: c.url,
         method: c.method,
-        data: c.body ?? {},
+        url: c.url(userId),
+        data: c.body ? c.body(userId) : undefined,
         validateStatus: () => true,
       });
+
       if (r.status >= 200 && r.status < 300) {
-        return (r.data ?? {}) as { tempPassword?: string };
+        // distintos backends devuelven nombres distintos
+        const tmp =
+          r.data?.tempPassword ??
+          r.data?.password ??
+          r.data?.newPassword ??
+          r.data?.temp ??
+          "";
+
+        if (typeof tmp === "string" && tmp.trim().length > 0) {
+          return { tempPassword: tmp };
+        }
+
+        // éxito sin password en cuerpo ⇒ probablemente enviada por correo
+        return { tempPassword: "" };
       }
-      last = r;
-    } catch (e) {
-      last = e;
+
+      // guarda el último mensaje por si necesitamos mostrarlo
+      lastMsg = (r.data?.message || r.data?.error || `HTTP ${r.status} ${c.url(userId)}`).toString();
+    } catch (e: any) {
+      lastMsg = (e?.message || "Fallo de red").toString();
     }
   }
-  const msg = last?.data?.message || last?.message || "No se pudo resetear la contraseña.";
-  throw new Error(msg);
+
+  // Mensaje amable, sin exponer el “Cannot POST …”
+  throw new Error(
+    "No encontré un endpoint compatible para resetear contraseña. " +
+    "Activa en el backend una de estas rutas: " +
+    "`POST /users/:id/reset-password`, `POST /admin/users/:id/reset-password`, " +
+    "`PATCH /users/:id/password`, o `POST /users/reset-password`."
+    + (lastMsg ? ` Detalle: ${lastMsg}` : "")
+  );
 }
 
 /** 👇 Para compatibilidad con StaffNew.tsx */
