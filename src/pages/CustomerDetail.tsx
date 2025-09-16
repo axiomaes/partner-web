@@ -4,6 +4,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import AppLayout from "@/layout/AppLayout";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
 import { api, publicCustomerQrUrl, addVisit, getCustomerVisits } from "@/shared/api";
+import CustomerVisitCard from "@/components/CustomerVisitCard";
 
 /** ---- Tipos ---- */
 type Customer = {
@@ -11,7 +12,7 @@ type Customer = {
   name?: string | null;
   phone?: string | null;
   email?: string | null;
-  birthday?: string | null;  // YYYY-MM-DD
+  birthday?: string | null; // YYYY-MM-DD
   visitsCount?: number | null;
   createdAt?: string | null;
   [k: string]: any;
@@ -43,16 +44,7 @@ const waHref = (phone?: string | null, text?: string) => {
   return `https://wa.me/${digits}?text=${encodeURIComponent(t)}`;
 };
 
-/** Progreso dentro del ciclo de 10 visitas */
-function progress10(total?: number | null) {
-  const v = Math.max(0, Number(total || 0));
-  const cycle = v % 10; // 0..9
-  // Para pintar casillas: si v>0 y cycle===0 significa ciclo completo (10/10).
-  const filled = cycle === 0 && v > 0 ? 10 : cycle;
-  return { v, filled };
-}
-
-/** Helpers para filtro mensual */
+/** Helpers para filtro mensual (historial) */
 const monthKey = (iso: string) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -130,7 +122,9 @@ export default function CustomerDetail() {
         if (live) setLoading(false);
       }
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -160,16 +154,6 @@ export default function CustomerDetail() {
   }
 
   const title = c?.name ? `Cliente · ${c.name}` : "Cliente";
-  const prog = progress10(c?.visitsCount);
-
-  // Colores de casillas según progreso
-  function cellClass(index: number, filled: number): string {
-    if (index >= filled) return "bg-base-200 border-base-300 text-base-content/40";
-    // lleno:
-    if (filled >= 10) return "bg-yellow-400/90 text-white border-yellow-500"; // dorado (10/10)
-    if (filled >= 5) return "bg-amber-200 text-amber-900 border-amber-300";   // amarillo (>=5)
-    return "bg-sky-200 text-sky-900 border-sky-300";                            // azul claro (<5)
-  }
 
   // === Historial: opciones de meses y lista filtrada (máx 15) ===
   const monthOptions = useMemo(() => {
@@ -179,9 +163,7 @@ export default function CustomerDetail() {
   }, [visits]);
 
   const filteredVisits = useMemo(() => {
-    const base = monthFilter === "all"
-      ? visits
-      : visits.filter(v => monthKey(v.visitedAt) === monthFilter);
+    const base = monthFilter === "all" ? visits : visits.filter((v) => monthKey(v.visitedAt) === monthFilter);
     return base.slice(0, 15); // solo últimas 15
   }, [visits, monthFilter]);
 
@@ -189,7 +171,9 @@ export default function CustomerDetail() {
     <AppLayout title={title} subtitle="Ficha del cliente y acciones rápidas.">
       {/* Barra superior */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link to="/app/customers/list" className="btn btn-ghost">← Volver al listado</Link>
+        <Link to="/app/customers/list" className="btn btn-ghost">
+          ← Volver al listado
+        </Link>
         {canAddVisit && (
           <button className={`btn btn-primary ${busy ? "loading" : ""}`} disabled={busy} onClick={tryRegister}>
             {busy ? "" : "Añadir visita"}
@@ -205,8 +189,16 @@ export default function CustomerDetail() {
         )}
       </div>
 
-      {msg && <div className={`alert ${msg.startsWith("❌") ? "alert-warning" : "alert-info"} mb-4`}><span>{msg}</span></div>}
-      {err && <div className="alert alert-warning mb-4"><span>{err}</span></div>}
+      {msg && (
+        <div className={`alert ${msg.startsWith("❌") ? "alert-warning" : "alert-info"} mb-4`}>
+          <span>{msg}</span>
+        </div>
+      )}
+      {err && (
+        <div className="alert alert-warning mb-4">
+          <span>{err}</span>
+        </div>
+      )}
 
       {/* Modal Override */}
       <input type="checkbox" className="modal-toggle" checked={!!needsOverride} readOnly />
@@ -218,7 +210,9 @@ export default function CustomerDetail() {
               Ya existe una visita hoy para este cliente. Solo un <b>OWNER</b> puede autorizar un segundo registro.
             </p>
             <div className="modal-action">
-              <button className="btn" onClick={() => setNeedsOverride(null)}>Cancelar</button>
+              <button className="btn" onClick={() => setNeedsOverride(null)}>
+                Cancelar
+              </button>
               {isOwnerRole ? (
                 <button
                   className={`btn btn-primary ${busy ? "loading" : ""}`}
@@ -312,76 +306,43 @@ export default function CustomerDetail() {
                     src={publicCustomerQrUrl(c.id)}
                     alt="QR del cliente"
                     className="w-56 h-56 object-contain"
-                    onError={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0.4";
+                    }}
                   />
                 </div>
                 <div className="join mt-4">
                   {(isOwner(role) || isAdmin(role) || isSuperAdmin(role)) && (
-                    <a className="btn btn-primary join-item" href={publicCustomerQrUrl(c.id)} target="_blank" rel="noreferrer">
+                    <a
+                      className="btn btn-primary join-item"
+                      href={publicCustomerQrUrl(c.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       Abrir PNG
                     </a>
                   )}
-                  <button className="btn join-item" onClick={() => nav(-1)}>Cerrar</button>
+                  <button className="btn join-item" onClick={() => nav(-1)}>
+                    Cerrar
+                  </button>
                 </div>
               </>
             )}
           </div>
         </section>
 
-        {/* Tarjeta de visitas (10 casillas) */}
-        <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
-          <div className="card-body">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="card-title">Tarjeta de visitas</h3>
-              <div className="text-sm opacity-70">Ciclo actual: {prog.filled}/10</div>
-            </div>
-
-            {/* Progresos 5 y 10 */}
-            <div className="mb-3 text-sm">
-              <span className={`badge mr-2 ${prog.filled >= 5 ? "badge-success" : "badge-ghost"}`}>
-                {prog.filled >= 5 ? "50% disponible" : `${Math.max(0, 5 - prog.filled)} para 50%`}
-              </span>
-              <span className={`badge ${prog.filled >= 10 ? "badge-success" : "badge-ghost"}`}>
-                {prog.filled >= 10 ? "Gratis disponible" : `${Math.max(0, 10 - prog.filled)} para gratis`}
-              </span>
-            </div>
-
-            {/* 10 casillas (2 filas de 5) */}
-            <div className="grid grid-cols-5 gap-3 max-w-xl">
-              {Array.from({ length: 10 }).map((_, i) => {
-                const filled = prog.filled;
-                return (
-                  <div
-                    key={i}
-                    className={`h-16 rounded-2xl border grid place-items-center text-xl font-semibold ${cellClass(i, filled)}`}
-                  >
-                    {i < filled ? "★" : "—"}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Acciones de tarjeta */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                className={`btn btn-primary ${busy ? "loading" : ""}`}
-                disabled={!canAddVisit || busy}
-                onClick={tryRegister}
-              >
-                {busy ? "" : "Añadir visita (hoy)"}
-              </button>
-
-              {/* Botones de recompensas: placeholder manual */}
-              {prog.filled >= 5 && prog.filled < 10 && (
-                <button className="btn btn-outline">Emitir recompensa 50% (manual)</button>
-              )}
-              {prog.filled >= 10 && (
-                <button className="btn btn-outline">Emitir recompensa gratis (manual)</button>
-              )}
-              <span className="opacity-50 text-xs">* Las recompensas pueden integrarse con tu backend cuando quieras.</span>
-            </div>
-          </div>
-        </section>
+        {/* Tarjeta de visitas (componente nuevo) */}
+        <div className="lg:col-span-2">
+          {id && (
+            <CustomerVisitCard
+              customerId={id}
+              onChanged={() => {
+                // Si quieres refrescar totales tras sumar, vuelve a cargar datos básicos:
+                loadCustomer();
+              }}
+            />
+          )}
+        </div>
 
         {/* Tabla de visitas (scroll + filtro mes, máx 15) */}
         <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
@@ -397,14 +358,19 @@ export default function CustomerDetail() {
                 >
                   <option value="all">Todos</option>
                   {monthOptions.map((m) => (
-                    <option key={m} value={m}>{monthLabel(m)}</option>
+                    <option key={m} value={m}>
+                      {monthLabel(m)}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
 
             {loadingVisits ? (
-              <div className="flex items-center gap-2"><span className="loading loading-spinner" />Cargando…</div>
+              <div className="flex items-center gap-2">
+                <span className="loading loading-spinner" />
+                Cargando…
+              </div>
             ) : filteredVisits.length === 0 ? (
               <div className="opacity-70 text-sm">Sin visitas registradas.</div>
             ) : (
@@ -435,9 +401,11 @@ export default function CustomerDetail() {
 
             {!loadingVisits && filteredVisits.length > 0 && (
               <div className="text-xs opacity-70 mt-2">
-                Mostrando {filteredVisits.length} de {monthFilter === "all"
+                Mostrando {filteredVisits.length} de{" "}
+                {monthFilter === "all"
                   ? Math.min(15, visits.length)
-                  : Math.min(15, visits.filter(v => monthKey(v.visitedAt) === monthFilter).length)} visitas.
+                  : Math.min(15, visits.filter((v) => monthKey(v.visitedAt) === monthFilter).length)}{" "}
+                visitas.
               </div>
             )}
           </div>
