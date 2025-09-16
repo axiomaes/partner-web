@@ -40,6 +40,7 @@ export default function VisitPunchCard({
     try {
       const data = await getCustomerVisits(customerId);
       const arr: Visit[] = Array.isArray(data) ? data : data.rows ?? [];
+      // ascendente para que el índice 0 sea la 1.ª visita del ciclo
       arr.sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime());
       setVisits(arr.slice(-threshold));
       onChanged?.(arr);
@@ -82,20 +83,42 @@ export default function VisitPunchCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
+  const count = visits.length;
+  const isFull = count >= threshold;
+
   const cells = Array.from({ length: threshold }, (_, i) => {
     const v = visits[i];
-    const filled = !!v;
+    const filled = i < count;
+
+    // Colores:
+    // - 1..9 visitas: azul claro con número blanco
+    // - 10/10 (tarjeta llena): naranja con número blanco
+    const filledClasses = isFull
+      ? "bg-amber-500 text-white border-amber-600 ring-1 ring-amber-300"
+      : "bg-sky-400 text-white border-sky-500 ring-1 ring-sky-300";
+
     return (
       <div
         key={i}
-        className={`flex items-center justify-center rounded-xl border bg-white shadow-sm relative overflow-hidden
-                    ${filled ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200"}
-                    ${!filled && canEdit ? "cursor-pointer hover:bg-slate-50" : ""}`}
-        title={filled ? fmtDateISOtoDDMM(v.visitedAt) : canEdit ? "Añadir visita" : ""}
-        onClick={() => { if (!filled && canEdit && !loading) onAdd(); }}
+        className={[
+          "flex items-center justify-center rounded-xl border shadow-sm relative overflow-hidden select-none",
+          filled ? filledClasses : "bg-slate-100 border-slate-200",
+          !filled && canEdit ? "cursor-pointer hover:bg-slate-50" : "",
+        ].join(" ")}
+        title={
+          filled
+            ? `Visita ${i + 1}${v?.visitedAt ? ` · ${fmtDateISOtoDDMM(v.visitedAt)}` : ""}`
+            : canEdit
+            ? "Añadir visita"
+            : ""
+        }
+        onClick={() => {
+          if (!filled && canEdit && !loading) onAdd();
+        }}
+        aria-label={filled ? `Visita ${i + 1}` : "Casilla vacía"}
       >
         {filled ? (
-          <span className="text-sm font-medium text-slate-700">{fmtDateISOtoDDMM(v.visitedAt)}</span>
+          <span className="text-lg font-semibold">{i + 1}</span>
         ) : (
           <span className="text-xs text-slate-400">—</span>
         )}
@@ -109,14 +132,17 @@ export default function VisitPunchCard({
         <div className="flex items-start gap-4">
           <div className="flex-1">
             <div className="rounded-2xl border border-slate-300 bg-slate-50 overflow-hidden">
-              <div className="grid gap-2 p-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+              <div
+                className="grid gap-2 p-3"
+                style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(3.5rem, 1fr))` }}
+              >
                 {cells}
               </div>
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-sm text-slate-500">
-                Visitas: <b>{visits.length}</b> / {threshold}
+                Visitas: <b>{count}</b> / {threshold}
               </span>
 
               {canEdit && (
@@ -124,7 +150,7 @@ export default function VisitPunchCard({
                   <button
                     type="button"
                     onClick={onAdd}
-                    disabled={loading || visits.length >= threshold}
+                    disabled={loading || count >= threshold}
                     className="btn btn-sm btn-primary"
                   >
                     + Añadir visita (hoy)
@@ -132,7 +158,7 @@ export default function VisitPunchCard({
                   <button
                     type="button"
                     onClick={undoLast}
-                    disabled={loading || visits.length === 0}
+                    disabled={loading || count === 0}
                     className="btn btn-sm btn-outline"
                   >
                     ↶ Deshacer última
@@ -149,11 +175,11 @@ export default function VisitPunchCard({
           <div className="hidden lg:flex w-36 shrink-0">
             <div className="bg-slate-900 text-white rounded-xl p-3 h-full w-full flex flex-col justify-between">
               <div className="text-[11px] leading-tight opacity-90">
-                Oferta canjeable <b>lun–jue</b><br />presentando esta tarjeta.
+                Oferta canjeable <b>lun–jue</b>
+                <br />
+                presentando esta tarjeta.
               </div>
-              <div className="text-[11px] opacity-80">
-                Síguenos en Instagram
-              </div>
+              <div className="text-[11px] opacity-80">Síguenos en Instagram</div>
             </div>
           </div>
         </div>
