@@ -52,13 +52,24 @@ function progress10(total?: number | null) {
   return { v, filled };
 }
 
+/** Helpers para filtro mensual */
+const monthKey = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const monthLabel = (key: string) => {
+  const [y, m] = key.split("-");
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+};
+
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
 
   const { role } = useSession();
   const canSeeContact = isAdmin(role) || isOwner(role) || isSuperAdmin(role);
-  const showIdTo = isAdmin(role) || isSuperAdmin(role); // 👈 ID solo para ADMIN y SUPERADMIN
+  const showIdTo = isAdmin(role) || isSuperAdmin(role); // ID solo para ADMIN y SUPERADMIN
   const canAddVisit = useMemo(
     () => ["BARBER", "ADMIN", "OWNER", "SUPERADMIN"].includes(String(role || "")),
     [role]
@@ -74,11 +85,11 @@ export default function CustomerDetail() {
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [loadingVisits, setLoadingVisits] = useState(false);
 
+  // filtro de historial por mes (YYYY-MM | "all")
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+
   // override OWNER modal
   const [needsOverride, setNeedsOverride] = useState<null | { action: () => Promise<void> }>(null);
-
-  // (Nuevo) Modal placeholder para edición
-  const [editOpen, setEditOpen] = useState(false);
 
   async function loadCustomer() {
     if (!id) return;
@@ -130,15 +141,12 @@ export default function CustomerDetail() {
       setBusy(true);
       await addVisit(id, "Visita registrada desde detalle");
       setMsg("✅ Visita registrada.");
-      // 🔄 Recargar del servidor (cliente y visitas) para evitar pérdidas al recargar
       await Promise.all([loadCustomer(), loadVisits()]);
     } catch (e: any) {
       if (isDuplicateVisitError(e)) {
         setMsg("⚠️ Ya se registró una visita hoy. Requiere autorización del OWNER.");
         setNeedsOverride({
           action: async () => {
-            // Si tu backend soporta override con query/param, ajusta aquí;
-            // si no, quita el flag y deja que el backend decida.
             await addVisit(id, "Visita (override OWNER)");
             await Promise.all([loadCustomer(), loadVisits()]);
           },
@@ -162,6 +170,20 @@ export default function CustomerDetail() {
     if (filled >= 5) return "bg-amber-200 text-amber-900 border-amber-300";   // amarillo (>=5)
     return "bg-sky-200 text-sky-900 border-sky-300";                            // azul claro (<5)
   }
+
+  // === Historial: opciones de meses y lista filtrada (máx 15) ===
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of visits) set.add(monthKey(v.visitedAt));
+    return Array.from(set).sort((a, b) => (a < b ? 1 : -1)); // desc
+  }, [visits]);
+
+  const filteredVisits = useMemo(() => {
+    const base = monthFilter === "all"
+      ? visits
+      : visits.filter(v => monthKey(v.visitedAt) === monthFilter);
+    return base.slice(0, 15); // solo últimas 15
+  }, [visits, monthFilter]);
 
   return (
     <AppLayout title={title} subtitle="Ficha del cliente y acciones rápidas.">
@@ -225,44 +247,12 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {/* Modal Edición (placeholder, solo abre/cierra) */}
-      <input type="checkbox" className="modal-toggle" checked={editOpen} readOnly />
-      {editOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box">
-            <h3 className="font-bold text-lg mb-2">Editar cliente</h3>
-            <p className="text-sm opacity-80">
-              Próximo paso: aquí irá el formulario (nombre, teléfono, email, preferencias…).  
-              Por ahora solo añadimos el botón visible para <b>OWNER</b>.
-            </p>
-            <div className="modal-action">
-              <button className="btn" onClick={() => setEditOpen(false)}>Cerrar</button>
-            </div>
-          </div>
-          <div className="modal-backdrop" onClick={() => setEditOpen(false)} />
-        </div>
-      )}
-
       {/* Contenido */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Datos */}
         <section className="card bg-base-100 shadow-sm border border-base-200">
           <div className="card-body">
-            <div className="flex items-center justify-between">
-              <h3 className="card-title">Datos del cliente</h3>
-              {/* 👇 Botón Editar solo para OWNER */}
-              {isOwnerRole && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-primary"
-                  onClick={() => setEditOpen(true)}
-                  data-testid="edit-customer-btn"
-                >
-                  Editar
-                </button>
-              )}
-            </div>
-
+            <h3 className="card-title">Datos del cliente</h3>
             {loading ? (
               <div className="space-y-2">
                 <div className="skeleton h-6 w-48" />
@@ -381,7 +371,7 @@ export default function CustomerDetail() {
                 {busy ? "" : "Añadir visita (hoy)"}
               </button>
 
-              {/* Botones de recompensas: placeholder manual; enlaza a tu flujo real si lo tienes */}
+              {/* Botones de recompensas: placeholder manual */}
               {prog.filled >= 5 && prog.filled < 10 && (
                 <button className="btn btn-outline">Emitir recompensa 50% (manual)</button>
               )}
@@ -393,18 +383,34 @@ export default function CustomerDetail() {
           </div>
         </section>
 
-        {/* Tabla de visitas */}
+        {/* Tabla de visitas (scroll + filtro mes, máx 15) */}
         <section className="card bg-base-100 shadow-sm border border-base-200 lg:col-span-2">
           <div className="card-body">
-            <h3 className="card-title">Historial de visitas</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="card-title">Historial de visitas</h3>
+              <div className="flex items-center gap-2">
+                <label className="text-sm opacity-70">Mes:</label>
+                <select
+                  className="select select-sm select-bordered"
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>{monthLabel(m)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {loadingVisits ? (
               <div className="flex items-center gap-2"><span className="loading loading-spinner" />Cargando…</div>
-            ) : visits.length === 0 ? (
+            ) : filteredVisits.length === 0 ? (
               <div className="opacity-70 text-sm">Sin visitas registradas.</div>
             ) : (
-              <div className="overflow-x-auto rounded-box border border-base-300">
+              <div className="rounded-box border border-base-300 max-h-80 overflow-y-auto">
                 <table className="table table-compact w-full">
-                  <thead className="bg-base-200">
+                  <thead className="bg-base-200 sticky top-0 z-10">
                     <tr>
                       <th>Fecha</th>
                       <th>Hora</th>
@@ -412,7 +418,7 @@ export default function CustomerDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visits.map((v) => {
+                    {filteredVisits.map((v) => {
                       const d = new Date(v.visitedAt);
                       return (
                         <tr key={v.id}>
@@ -424,6 +430,14 @@ export default function CustomerDetail() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {!loadingVisits && filteredVisits.length > 0 && (
+              <div className="text-xs opacity-70 mt-2">
+                Mostrando {filteredVisits.length} de {monthFilter === "all"
+                  ? Math.min(15, visits.length)
+                  : Math.min(15, visits.filter(v => monthKey(v.visitedAt) === monthFilter).length)} visitas.
               </div>
             )}
           </div>
