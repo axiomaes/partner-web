@@ -77,6 +77,9 @@ export default function CustomerDetail() {
   // override OWNER modal
   const [needsOverride, setNeedsOverride] = useState<null | { action: () => Promise<void> }>(null);
 
+  // (Nuevo) Modal placeholder para edición
+  const [editOpen, setEditOpen] = useState(false);
+
   async function loadCustomer() {
     if (!id) return;
     const r = await api.get(`/customers/${encodeURIComponent(id)}`, { validateStatus: () => true });
@@ -222,12 +225,44 @@ export default function CustomerDetail() {
         </div>
       )}
 
+      {/* Modal Edición (placeholder, solo abre/cierra) */}
+      <input type="checkbox" className="modal-toggle" checked={editOpen} readOnly />
+      {editOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-2">Editar cliente</h3>
+            <p className="text-sm opacity-80">
+              Próximo paso: aquí irá el formulario (nombre, teléfono, email, preferencias…).  
+              Por ahora solo añadimos el botón visible para <b>OWNER</b>.
+            </p>
+            <div className="modal-action">
+              <button className="btn" onClick={() => setEditOpen(false)}>Cerrar</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setEditOpen(false)} />
+        </div>
+      )}
+
       {/* Contenido */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Datos */}
         <section className="card bg-base-100 shadow-sm border border-base-200">
           <div className="card-body">
-            <h3 className="card-title">Datos del cliente</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="card-title">Datos del cliente</h3>
+              {/* 👇 Botón Editar solo para OWNER */}
+              {isOwnerRole && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => setEditOpen(true)}
+                  data-testid="edit-customer-btn"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
+
             {loading ? (
               <div className="space-y-2">
                 <div className="skeleton h-6 w-48" />
