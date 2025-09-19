@@ -1,0 +1,59 @@
+name: Deploy Web to CapRover
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+      - "nginx.conf"
+      - "captain-definition"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch a desplegar"
+        required: true
+        default: "main"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # Opcional: build local para detectar errores de Vite/TS antes de subir
+      - name: Build check (optional)
+        run: |
+          echo "VITE_API_BASE solo para validar localmente"
+          VITE_API_BASE="https://axioma-api.stacks.axioma-creativa.es" npm ci
+          VITE_API_BASE="https://axioma-api.stacks.axioma-creativa.es" npm run build
+
+      - name: Install CapRover CLI
+        run: npm i -g caprover
+
+      - name: Deploy to CapRover (partner-web)
+        env:
+          CAPROVER_HOST: ${{ secrets.CAPROVER_HOST }}           # https://captain.stacks.axioma-creativa.es
+          CAPROVER_APP:  ${{ secrets.CAPROVER_WEB_APP }}         # partner-web
+          CAPROVER_PASSWORD: ${{ secrets.CAPROVER_PASSWORD }}    # misma pass del panel
+        run: |
+          caprover -V
+          BRANCH="${{ github.event.inputs.branch || 'main' }}"
+          caprover deploy \
+            -h "$CAPROVER_HOST" \
+            -a "$CAPROVER_APP" \
+            -p "$CAPROVER_PASSWORD" \
+            -b "$BRANCH"
