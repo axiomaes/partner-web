@@ -1,16 +1,13 @@
 // partner-web/src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
+import AppRouter from "./AppRouter";
 import DisablePWA from "./components/DisablePWA";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <DisablePWA />
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <AppRouter />
   </React.StrictMode>
 );
