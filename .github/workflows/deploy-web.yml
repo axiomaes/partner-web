@@ -57,3 +57,10 @@ jobs:
             -a "$CAPROVER_APP" \
             -p "$CAPROVER_PASSWORD" \
             -b "$BRANCH"
+
+      - name: Smoke test Web
+        run: |
+          echo "Esperando 30s a que arranque el frontend..."
+          sleep 30
+          curl -s -o /dev/null -w "%{http_code}" https://partner-web.stacks.axioma-creativa.es | grep 200
+
