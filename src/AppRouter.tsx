@@ -1,3 +1,4 @@
+// partner-web/src/AppRouter.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RouteGuard from "./shared/RouteGuard";
 import { useSession, isSuperAdmin, isAdmin, isOwner } from "./shared/auth";
@@ -13,11 +14,11 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import Dashboard from "./pages/Dashboard";          // /app → Dashboard
+import Dashboard from "./pages/Dashboard"; // /app → Dashboard
 import AdminPanel from "./pages/AdminPanel";
 import AdminUsers from "./pages/AdminUsers";
-import Customers from "./pages/Customers";           // ⬅️ LISTADO
-import CustomersNew from "./pages/CustomersNew";     // ⬅️ ALTA
+import Customers from "./pages/Customers"; // listado
+import CustomersNew from "./pages/CustomersNew"; // alta
 import CustomerDetail from "./pages/CustomerDetail";
 import Logout from "./pages/Logout";
 
@@ -31,7 +32,7 @@ function AlreadyLoggedRedirect() {
   const s = useSession();
   if (!s.ready) return null;
   if (s.token) {
-    // SUPERADMIN -> /cpanel ; resto -> /app
+    // SUPERADMIN → /cpanel ; resto → /app
     return <Navigate to={isSuperAdmin(s.role) ? "/cpanel" : "/app"} replace />;
   }
   return null;
@@ -81,7 +82,6 @@ export default function AppRouter() {
           path="/app"
           element={
             <RouteGuard>
-              {/* OWNER/ADMIN/SUPERADMIN → Dashboard; BARBER → check-in */}
               {adminOrAbove ? <Dashboard /> : <Navigate to="/staff/checkin" replace />}
             </RouteGuard>
           }
@@ -116,10 +116,7 @@ export default function AppRouter() {
         />
 
         {/* Clientes */}
-        {/* 🔁 Fuerza que /app/customers vaya al listado */}
         <Route path="/app/customers" element={<Navigate to="/app/customers/list" replace />} />
-
-        {/* Listado real */}
         <Route
           path="/app/customers/list"
           element={
@@ -128,8 +125,6 @@ export default function AppRouter() {
             </RouteGuard>
           }
         />
-
-        {/* Alta */}
         <Route
           path="/app/customers/new"
           element={
@@ -138,8 +133,6 @@ export default function AppRouter() {
             </RouteGuard>
           }
         />
-
-        {/* Detalle */}
         <Route
           path="/app/customers/:id"
           element={
@@ -154,11 +147,7 @@ export default function AppRouter() {
           path="/cpanel/*"
           element={
             <RouteGuard>
-              {isSuperAdmin(s.role) ? (
-                <CPanelAdminDashboard />
-              ) : (
-                <Navigate to="/unauthorized" replace />
-              )}
+              {isSuperAdmin(s.role) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
             </RouteGuard>
           }
         />
