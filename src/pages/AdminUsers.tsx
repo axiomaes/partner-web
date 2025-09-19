@@ -1,13 +1,14 @@
 // src/pages/AdminUsers.tsx
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/layout/AppLayout";
-import {
-  createUser,
-  listUsers,
-  resetUserPassword,
-  type UserRole,
-} from "@/shared/auth";
+
+// funciones de API
+import { createUser, listUsers, resetUserPassword } from "@/shared/api";
+
+// tipos y helpers de auth
+import type { UserRole } from "@/shared/auth";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
+
 
 type Row = { id: string; email?: string | null; role?: UserRole | null };
 
