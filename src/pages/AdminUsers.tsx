@@ -6,7 +6,7 @@ import {
   listUsers,
   resetUserPassword,
   type UserRole,
-} from "@/shared/api";
+} from "@/shared/auth";
 import { useSession, isAdmin, isOwner, isSuperAdmin } from "@/shared/auth";
 
 type Row = { id: string; email?: string | null; role?: UserRole | null };
