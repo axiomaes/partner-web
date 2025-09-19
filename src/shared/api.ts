@@ -2,7 +2,7 @@ import axios, { AxiosHeaders, AxiosInstance } from "axios";
 import { saveSession } from "./auth";
 
 /** ===== Tipos compartidos ===== */
-export type UserRole = "SUPERADMIN" | "OWNER" | "ADMIN" | "BARBER";
+import type { UserRole } from "./auth";
 export type SessionLike = {
   email: string;
   role: UserRole;
