@@ -1,0 +1,17 @@
+{
+  "name": "partner-web",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20.19.0"
+    }
+  },
+  "postCreateCommand": "npm ci",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}
