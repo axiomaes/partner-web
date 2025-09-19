@@ -1,4 +1,3 @@
-- // src/App.tsx  (duplicado)
-- ...todas las rutas...
-+ // src/App.tsx
-+ export { default } from "./AppRouter";
+// src/App.tsx
+import AppRouter from "./AppRouter";
+export default AppRouter;
