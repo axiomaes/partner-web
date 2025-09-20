@@ -14,15 +14,15 @@ import PortalPoints from "./portal/PortalPoints";
 
 /* Staff / negocio */
 import StaffCheckin from "./pages/StaffCheckin";
-import Dashboard from "./pages/Dashboard"; // /app → Dashboard
+import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
 import AdminUsers from "./pages/AdminUsers";
-import Customers from "./pages/Customers"; // listado
-import CustomersNew from "./pages/CustomersNew"; // alta
+import Customers from "./pages/Customers";
+import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 import Logout from "./pages/Logout";
 
-/* Cuenta (cambio de contraseña propio) */
+/* Cuenta */
 import AccountSettings from "./pages/AccountSettings";
 
 /* CPanel (solo SUPERADMIN) */
@@ -32,7 +32,6 @@ function AlreadyLoggedRedirect() {
   const s = useSession();
   if (!s.ready) return null;
   if (s.token) {
-    // SUPERADMIN → /cpanel ; resto → /app
     return <Navigate to={isSuperAdmin(s.role) ? "/cpanel" : "/app"} replace />;
   }
   return null;
@@ -42,8 +41,7 @@ export default function AppRouter() {
   const s = useSession();
   const adminOrAbove = isSuperAdmin(s.role) || isOwner(s.role) || isAdmin(s.role);
 
-  // evita flicker antes de hidratar la sesión
-  if (!s.ready) return null;
+  if (!s.ready) return null; // evita flicker antes de hidratar sesión
 
   return (
     <BrowserRouter>
@@ -147,7 +145,11 @@ export default function AppRouter() {
           path="/cpanel/*"
           element={
             <RouteGuard>
-              {isSuperAdmin(s.role) ? <CPanelAdminDashboard /> : <Navigate to="/unauthorized" replace />}
+              {isSuperAdmin(s.role) ? (
+                <CPanelAdminDashboard />
+              ) : (
+                <Navigate to="/unauthorized" replace />
+              )}
             </RouteGuard>
           }
         />
