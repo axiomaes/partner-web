@@ -455,6 +455,10 @@ export type WaStatus = {
 const WA_STATUS_CANDIDATES = ["/wa/status", "/whatsapp/status", "/integrations/wa/status", "/cp/wa/status"];
 const WA_STATUS_CACHE_KEY = "axioma.wa.status_path";
 
+// === nuevo: endpoints de envío
+const WA_SEND_CANDIDATES = ["/wa/send", "/whatsapp/send", "/integrations/wa/send", "/cp/wa/send"];
+const WA_SEND_CACHE_KEY = "axioma.wa.send_path";
+
 async function resolvePath(candidates: string[], cacheKey: string): Promise<string | null> {
   try {
     const cached = localStorage.getItem(cacheKey);
@@ -463,8 +467,9 @@ async function resolvePath(candidates: string[], cacheKey: string): Promise<stri
   } catch {}
   for (const p of candidates) {
     try {
-      const r = await api.get(p, { validateStatus: () => true });
-      if (r.status >= 200 && r.status < 300) {
+      // probamos con un HEAD o GET suave (algunos backends aceptan OPTIONS/HEAD)
+      const r = await api.request({ url: p, method: "OPTIONS", validateStatus: () => true });
+      if (r.status >= 200 && r.status < 400) {
         try { localStorage.setItem(cacheKey, p); } catch {}
         return p;
       }
@@ -473,6 +478,7 @@ async function resolvePath(candidates: string[], cacheKey: string): Promise<stri
   try { localStorage.setItem(cacheKey, ""); } catch {}
   return null;
 }
+
 export async function getWaStatus() {
   const path = await resolvePath(WA_STATUS_CANDIDATES, WA_STATUS_CACHE_KEY);
   if (!path) return null;
@@ -480,8 +486,82 @@ export async function getWaStatus() {
   return r.status >= 200 && r.status < 300 ? r.data : null;
 }
 
+// === nuevo: envío WhatsApp con fallback de rutas y lectura de allowance si viene en headers
+type SendWaOptions = { mediaUrl?: string; businessId?: string }; // businessId si el backend lo requiere
+export type SendWaResult = {
+  ok: boolean;
+  provider?: "twilio" | "meta" | string;
+  sid?: string;
+  remaining?: number | null;     // si el backend devuelve X-WA-Remaining
+  monthlyRemaining?: number | null; // si el backend devuelve X-WA-Month-Remaining
+  message?: string;
+};
+
+function normE164(p: string): string {
+  const d = p.replace(/\D/g, "");
+  return d.startsWith("+" ) ? `+${d.replace(/^\+/, "")}` : `+${d}`;
+}
+
+export async function sendWhatsappMessage(
+  toPhone: string,
+  body: string,
+  opts?: SendWaOptions
+): Promise<SendWaResult> {
+  const path =
+    (await resolvePath(WA_SEND_CANDIDATES, WA_SEND_CACHE_KEY)) ??
+    // si no pudimos resolverlo vía OPTIONS, probamos en caliente contra candidatos:
+    null;
+
+  const candidates = path ? [path] : WA_SEND_CANDIDATES;
+
+  let lastErr: any = null;
+  for (const p of candidates) {
+    try {
+      const payload: any = { to: normE164(toPhone), body };
+      if (opts?.mediaUrl) payload.mediaUrl = opts.mediaUrl;
+      if (opts?.businessId) payload.businessId = opts.businessId;
+
+      const r = await api.post(p, payload, { validateStatus: () => true });
+
+      if (r.status >= 200 && r.status < 300) {
+        // cachea esta ruta como válida para siguientes envíos
+        try { localStorage.setItem(WA_SEND_CACHE_KEY, p); } catch {}
+
+        const remaining =
+          Number(r.headers?.["x-wa-remaining"]) || Number(r.data?.remaining) || null;
+        const monthlyRemaining =
+          Number(r.headers?.["x-wa-month-remaining"]) || Number(r.data?.monthlyRemaining) || null;
+
+        return {
+          ok: true,
+          sid: r.data?.sid || r.data?.id || undefined,
+          provider: r.data?.provider,
+          remaining,
+          monthlyRemaining,
+        };
+      }
+
+      // si la ruta existe pero responde 404/405 seguimos probando; otros errores los guardamos
+      if (![404, 405].includes(r.status)) {
+        lastErr = new Error(r.data?.message || r.data?.error || `HTTP ${r.status}`);
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  return {
+    ok: false,
+    message:
+      (lastErr?.message as string) ||
+      "No se encontró endpoint compatible para enviar WhatsApp (probar /wa/send o /whatsapp/send).",
+  };
+}
+
+/** ======== OTP (portal) ======== */
 const OTP_REQUEST_CANDIDATES = ["/portal/otp/request", "/portal/otp/send", "/otp/request"];
 const OTP_VERIFY_CANDIDATES  = ["/portal/otp/verify",  "/otp/verify"];
+
 async function postFirstOk(pathList: string[], body: any) {
   let last: any = null;
   for (const p of pathList) {
@@ -497,6 +577,7 @@ async function postFirstOk(pathList: string[], body: any) {
   const msg = last?.data?.message || last?.message || "No disponible";
   throw new Error(msg);
 }
+
 export async function requestCustomerOtp(body: { phone?: string; email?: string }) {
   await postFirstOk(OTP_REQUEST_CANDIDATES, body); return true;
 }
