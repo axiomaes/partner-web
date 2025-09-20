@@ -21,12 +21,18 @@ import Customers from "./pages/Customers";
 import CustomersNew from "./pages/CustomersNew";
 import CustomerDetail from "./pages/CustomerDetail";
 import Logout from "./pages/Logout";
+import StaffNew from "./pages/StaffNew";
 
 /* Cuenta */
 import AccountSettings from "./pages/AccountSettings";
 
 /* CPanel (solo SUPERADMIN) */
 import CPanelAdminDashboard from "./pages/CPanelAdminDashboard";
+
+/* Legales */
+import AvisoLegal from "./pages/Legal/AvisoLegal";
+import Cookies from "./pages/Legal/Cookies";
+import Privacidad from "./pages/Legal/Privacidad";
 
 function AlreadyLoggedRedirect() {
   const s = useSession();
@@ -139,6 +145,21 @@ export default function AppRouter() {
             </RouteGuard>
           }
         />
+
+        {/* Staff - Crear */}
+        <Route
+          path="/app/staff/new"
+          element={
+            <RouteGuard>
+              <StaffNew />
+            </RouteGuard>
+          }
+        />
+
+        {/* Legales */}
+        <Route path="/legal/aviso" element={<AvisoLegal />} />
+        <Route path="/legal/cookies" element={<Cookies />} />
+        <Route path="/legal/privacidad" element={<Privacidad />} />
 
         {/* CPanel (solo SUPERADMIN) */}
         <Route
